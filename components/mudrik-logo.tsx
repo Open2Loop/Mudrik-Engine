@@ -6,7 +6,10 @@ export const MudrikLogo = ({
   size?: number;
 }) => (
   <svg
-    className={className ?? (size === undefined ? "w-8 h-8 text-blue-600" : undefined)}
+    className={
+      className ??
+      (size !== undefined ? "inline-block shrink-0" : "w-8 h-8 text-blue-600")
+    }
     width={size}
     height={size}
     viewBox="0 0 24 24"
