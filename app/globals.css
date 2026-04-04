@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-white text-charcoal antialiased;
+}
+
+:focus-visible {
+  @apply outline-none ring-2 ring-midnight/30 ring-offset-2;
+}
