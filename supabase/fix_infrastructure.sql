@@ -101,3 +101,31 @@ COMMENT ON COLUMN public.user_settings.embedding_model IS 'The identifier for th
 
 ALTER TABLE public.user_settings ADD COLUMN IF NOT EXISTS ai_provider text DEFAULT 'gemini';
 ALTER TABLE public.user_settings ADD COLUMN IF NOT EXISTS gemini_api_key text;
+ALTER TABLE public.user_settings ADD COLUMN IF NOT EXISTS generation_engine text NOT NULL DEFAULT 'sovereign';
+
+-- Safe settings load for UI (no API key strings in the JSON response)
+CREATE OR REPLACE FUNCTION public.get_user_settings_for_client()
+RETURNS TABLE (
+  generation_engine text,
+  ai_provider text,
+  embedding_model text,
+  chat_model text,
+  has_openai_key boolean,
+  has_gemini_key boolean
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = public
+AS $$
+  SELECT
+    us.generation_engine,
+    us.ai_provider,
+    us.embedding_model,
+    us.chat_model,
+    (coalesce(trim(us.model_api_key), '') <> ''),
+    (coalesce(trim(us.gemini_api_key), '') <> '')
+  FROM public.user_settings us
+  WHERE us.user_id = auth.uid();
+$$;
+GRANT EXECUTE ON FUNCTION public.get_user_settings_for_client() TO authenticated;

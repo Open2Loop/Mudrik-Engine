@@ -34,7 +34,9 @@ export default function RootLayout({
 }>) {
   return (
     <html dir="rtl" lang="ar" className={ibmPlexSansArabic.variable}>
-      <body className={`min-h-screen font-sans ${ibmPlexSansArabic.className}`}>{children}</body>
+      <body className={`min-h-screen bg-white text-charcoal antialiased font-sans ${ibmPlexSansArabic.className}`}>
+        {children}
+      </body>
     </html>
   );
 }

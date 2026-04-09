@@ -52,8 +52,7 @@ export default function LoginPage() {
         setMessage("لم يتم العثور على جلسة نشطة.");
         setLoading(false);
       }
-    } catch (err) {
-      console.error("Login error:", err);
+    } catch {
       setMessage("فشل الاتصال بخدمة المصادقة. يرجى المحاولة مرة أخرى.");
       setLoading(false);
     }

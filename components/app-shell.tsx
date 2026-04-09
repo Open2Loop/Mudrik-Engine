@@ -22,15 +22,20 @@ export function AppShell({
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-6 px-6 py-4">
-          <div className="flex items-center gap-12">
-            <Link href="/vault" className="flex items-center gap-2 text-xl font-bold text-midnight tracking-tight">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
+          <div className="flex min-w-0 items-center gap-6 lg:gap-12">
+            <Link
+              href="/"
+              prefetch
+              className="flex items-center gap-2 text-xl font-bold text-midnight tracking-tight"
+              aria-label="الرئيسية — مُدْرِك"
+            >
               <div className="rounded-lg bg-midnight p-1.5 text-white">
                 <MudrikLogo size={20} />
               </div>
               <span>مُدْرِك</span>
             </Link>
-            <nav className="hidden md:flex flex-wrap gap-8 text-sm font-semibold text-mist">
+            <nav className="hidden md:flex min-w-0 items-center gap-6 lg:gap-8 overflow-x-auto whitespace-nowrap text-sm font-semibold text-mist">
               {nav.map((item) => (
                 <Link
                   key={item.href}

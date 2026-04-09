@@ -11,6 +11,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { logApiError } from "@/lib/api-errors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
     await supabase.auth.signOut();
     return NextResponse.redirect(new URL("/login", request.url), 302);
   } catch (e) {
-    console.error("CRITICAL ERROR IN /api/auth/signout:", e);
+    logApiError("auth/signout", e);
     return NextResponse.redirect(new URL("/login", request.url), 302);
   }
 }

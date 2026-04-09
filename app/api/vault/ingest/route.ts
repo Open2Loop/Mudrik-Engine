@@ -11,6 +11,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { API_ERROR_UNEXPECTED_AR, logApiError } from "@/lib/api-errors";
 import { chunkTextByTokens } from "@/lib/chunking";
 import { extractTextFromBuffer } from "@/lib/document-parser";
 import { embedTexts } from "@/lib/model-gateway";
@@ -106,9 +107,13 @@ export async function POST(request: Request) {
     try {
       text = await extractTextFromBuffer(buffer, mime);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "فشل استخراج النص";
-      await supabase.from("vault_documents").update({ status: "failed", error_message: msg }).eq("id", documentId);
-      return NextResponse.json({ error: msg }, { status: 422 });
+      logApiError("vault/ingest/extract", e);
+      const internal = e instanceof Error ? e.message : "extract failed";
+      await supabase.from("vault_documents").update({ status: "failed", error_message: internal }).eq("id", documentId);
+      return NextResponse.json(
+        { error: "تعذر استخراج النص من الملف. تأكد من صيغة PDF أو DOCX." },
+        { status: 422 },
+      );
     }
 
     const trimmed = text.replace(/\u0000/g, "").trim();
@@ -140,8 +145,11 @@ export async function POST(request: Request) {
         })
         .eq("id", documentId);
       if (contentErr2) {
-        console.error("CRITICAL ERROR IN /api/vault/ingest (vault update):", contentErr, contentErr2);
-        return NextResponse.json({ error: contentErr2.message }, { status: 500 });
+        logApiError("vault/ingest/document-update", contentErr2);
+        return NextResponse.json(
+          { error: "تعذر تحديث المستند في قاعدة البيانات." },
+          { status: 500 },
+        );
       }
     }
 
@@ -189,12 +197,15 @@ export async function POST(request: Request) {
       const batch = rows.slice(i, i + INSERT_BATCH);
       const { error: insErr } = await supabase.from("document_chunks").insert(batch);
       if (insErr) {
-        console.error("CRITICAL ERROR IN /api/vault/ingest (chunk insert):", insErr);
+        logApiError("vault/ingest/chunk-insert", insErr);
         await supabase
           .from("vault_documents")
           .update({ status: "failed", error_message: insErr.message })
           .eq("id", documentId);
-        return NextResponse.json({ error: insErr.message }, { status: 500 });
+        return NextResponse.json(
+          { error: "تعذر حفظ مقاطع المستند في قاعدة البيانات." },
+          { status: 500 },
+        );
       }
     }
 
@@ -210,8 +221,7 @@ export async function POST(request: Request) {
       filename: safeFilename(row.filename),
     });
   } catch (e) {
-    console.error("CRITICAL ERROR IN /api/vault/ingest:", e);
-    const msg = e instanceof Error ? e.message : "خطأ غير متوقع";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    logApiError("vault/ingest", e);
+    return NextResponse.json({ error: API_ERROR_UNEXPECTED_AR }, { status: 500 });
   }
 }

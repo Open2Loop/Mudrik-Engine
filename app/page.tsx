@@ -28,12 +28,17 @@ export default async function HomePage() {
     <div className="flex min-h-screen flex-col bg-white">
       <header className="border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-50">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
-          <div className="flex items-center gap-2 text-xl font-bold text-midnight tracking-tight">
+          <Link
+            href="/"
+            prefetch
+            className="flex items-center gap-2 text-xl font-bold text-midnight tracking-tight"
+            aria-label="مُدْرِك — الرئيسية"
+          >
             <div className="bg-midnight text-white p-1.5 rounded-lg">
               <MudrikLogo size={20} />
             </div>
             <span>مُدْرِك</span>
-          </div>
+          </Link>
           <Link
             href="/login"
             className="rounded-full bg-midnight px-6 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 shadow-lg shadow-midnight/10"

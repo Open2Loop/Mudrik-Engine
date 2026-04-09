@@ -11,6 +11,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { API_ERROR_UNEXPECTED_AR, logApiError } from "@/lib/api-errors";
 import { extractTextFromBuffer } from "@/lib/document-parser";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -49,9 +50,11 @@ export async function POST(request: Request) {
     try {
       text = await extractTextFromBuffer(buffer, file.type || "application/pdf");
     } catch (e) {
-      console.error("CRITICAL ERROR IN /api/engine/analyze (extract):", e);
-      const msg = e instanceof Error ? e.message : "فشل التحليل";
-      return NextResponse.json({ error: msg }, { status: 422 });
+      logApiError("engine/analyze/extract", e);
+      return NextResponse.json(
+        { error: "تعذر استخراج النص من الملف. تأكد من صحة PDF أو DOCX." },
+        { status: 422 },
+      );
     }
 
     const excerpt = text.trim();
@@ -66,8 +69,7 @@ export async function POST(request: Request) {
       text: excerpt,
     });
   } catch (e) {
-    console.error("CRITICAL ERROR IN /api/engine/analyze:", e);
-    const msg = e instanceof Error ? e.message : "خطأ غير متوقع";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    logApiError("engine/analyze", e);
+    return NextResponse.json({ error: API_ERROR_UNEXPECTED_AR }, { status: 500 });
   }
 }

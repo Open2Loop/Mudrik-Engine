@@ -12,7 +12,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AppShell } from "@/components/app-shell";
 import { createClient } from "@/lib/supabase/client";
 import { Key, Cpu, Box, Save, CheckCircle2, AlertCircle, Loader2, Plug, Sparkles } from "lucide-react";
@@ -20,15 +20,24 @@ import { MudrikLogo } from "@/components/mudrik-logo";
 
 export default function SettingsPage() {
   const supabase = useMemo(() => createClient(), []);
+  const [generationEngine, setGenerationEngine] = useState<"sovereign" | "gemini" | "openai">("sovereign");
   const [aiProvider, setAiProvider] = useState<"gemini" | "openai">("gemini");
-  const [openaiApiKey, setOpenaiApiKey] = useState("");
-  const [geminiApiKey, setGeminiApiKey] = useState("");
+  /** Presence only — never store actual key material from the server in React state. */
+  const [hasOpenAiKey, setHasOpenAiKey] = useState(false);
+  const [hasGeminiKey, setHasGeminiKey] = useState(false);
+  /** Ephemeral: only what the user types this session to set or rotate a key; cleared after save. */
+  const [openaiKeyDraft, setOpenaiKeyDraft] = useState("");
+  const [geminiKeyDraft, setGeminiKeyDraft] = useState("");
   const [embeddingModel, setEmbeddingModel] = useState("text-embedding-3-small");
   const [chatModel, setChatModel] = useState("gpt-4o-mini");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ message: string; type: "error" | "success" } | null>(null);
 
+  /**
+   * Loads settings without ever assigning model_api_key / gemini_api_key strings to React state
+   * (avoids DevTools exposure). Presence flags come from RPC or default false; drafts stay empty until the user types.
+   */
   const load = useCallback(async () => {
     setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
@@ -37,13 +46,53 @@ export default function SettingsPage() {
       setLoading(false);
       return;
     }
-    const { data } = await supabase.from("user_settings").select("*").eq("user_id", uid).maybeSingle();
-    if (data) {
-      setAiProvider(data.ai_provider === "openai" ? "openai" : "gemini");
-      setOpenaiApiKey(data.model_api_key ?? "");
-      setGeminiApiKey(data.gemini_api_key ?? "");
-      setEmbeddingModel(data.embedding_model ?? "text-embedding-3-small");
-      setChatModel(data.chat_model ?? "gpt-4o-mini");
+    const { data: rpcRows, error: rpcError } = await supabase.rpc("get_user_settings_for_client");
+    if (!rpcError && rpcRows !== null && rpcRows !== undefined) {
+      const rows = Array.isArray(rpcRows) ? rpcRows : [rpcRows];
+      const row = rows[0] as
+        | {
+            generation_engine?: string | null;
+            ai_provider?: string | null;
+            embedding_model?: string | null;
+            chat_model?: string | null;
+            has_openai_key?: boolean;
+            has_gemini_key?: boolean;
+          }
+        | undefined;
+      if (row) {
+        const ge = row.generation_engine;
+        setGenerationEngine(ge === "gemini" || ge === "openai" ? ge : "sovereign");
+        setAiProvider(row.ai_provider === "openai" ? "openai" : "gemini");
+        setHasOpenAiKey(Boolean(row.has_openai_key));
+        setHasGeminiKey(Boolean(row.has_gemini_key));
+        setOpenaiKeyDraft("");
+        setGeminiKeyDraft("");
+        setEmbeddingModel(row.embedding_model ?? "text-embedding-3-small");
+        setChatModel(row.chat_model ?? "gpt-4o-mini");
+      }
+    } else {
+      const { data } = await supabase
+        .from("user_settings")
+        .select("generation_engine, ai_provider, embedding_model, chat_model")
+        .eq("user_id", uid)
+        .maybeSingle();
+      if (data) {
+        const row = data as {
+          generation_engine?: string | null;
+          ai_provider?: string | null;
+          embedding_model?: string | null;
+          chat_model?: string | null;
+        };
+        const ge = row.generation_engine;
+        setGenerationEngine(ge === "gemini" || ge === "openai" ? ge : "sovereign");
+        setAiProvider(row.ai_provider === "openai" ? "openai" : "gemini");
+        setHasOpenAiKey(false);
+        setHasGeminiKey(false);
+        setOpenaiKeyDraft("");
+        setGeminiKeyDraft("");
+        setEmbeddingModel(row.embedding_model ?? "text-embedding-3-small");
+        setChatModel(row.chat_model ?? "gpt-4o-mini");
+      }
     }
     setLoading(false);
   }, [supabase]);
@@ -52,7 +101,7 @@ export default function SettingsPage() {
     void load();
   }, [load]);
 
-  async function onSave(e: React.FormEvent) {
+  async function onSave(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
     setNotice(null);
@@ -63,23 +112,45 @@ export default function SettingsPage() {
       setNotice({ message: "انتهت الجلسة.", type: "error" });
       return;
     }
-    const { error } = await supabase.from("user_settings").upsert(
-      {
+    const openaiTrim = openaiKeyDraft.trim();
+    const geminiTrim = geminiKeyDraft.trim();
+
+    const baseFields = {
+      generation_engine: generationEngine,
+      ai_provider: aiProvider,
+      embedding_model: embeddingModel.trim(),
+      chat_model: chatModel.trim(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: existing } = await supabase.from("user_settings").select("user_id").eq("user_id", uid).maybeSingle();
+
+    let error: { message: string } | null = null;
+    if (existing) {
+      const patch: Record<string, string | null> = { ...baseFields };
+      if (openaiTrim) patch.model_api_key = openaiTrim;
+      if (geminiTrim) patch.gemini_api_key = geminiTrim;
+      const res = await supabase.from("user_settings").update(patch).eq("user_id", uid);
+      error = res.error;
+    } else {
+      const res = await supabase.from("user_settings").insert({
         user_id: uid,
-        ai_provider: aiProvider,
-        model_api_key: openaiApiKey.trim() || null,
-        gemini_api_key: geminiApiKey.trim() || null,
-        embedding_model: embeddingModel.trim(),
-        chat_model: chatModel.trim(),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" }
-    );
+        ...baseFields,
+        model_api_key: openaiTrim || null,
+        gemini_api_key: geminiTrim || null,
+      });
+      error = res.error;
+    }
+
     setSaving(false);
     if (error) {
       setNotice({ message: error.message, type: "error" });
       return;
     }
+    if (openaiTrim) setHasOpenAiKey(true);
+    if (geminiTrim) setHasGeminiKey(true);
+    setOpenaiKeyDraft("");
+    setGeminiKeyDraft("");
     setNotice({ message: "تم حفظ الإعدادات بنجاح.", type: "success" });
   }
 
@@ -107,11 +178,37 @@ export default function SettingsPage() {
               <form onSubmit={onSave} className="space-y-8">
                 <div className="space-y-3">
                   <label
+                    htmlFor="generationEngine"
+                    className="flex items-center gap-2 text-sm font-bold text-charcoal"
+                  >
+                    <Cpu size={16} className="text-mist" />
+                    محرك توليد العروض (Model Selector)
+                  </label>
+                  <select
+                    id="generationEngine"
+                    value={generationEngine}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setGenerationEngine(v === "gemini" || v === "openai" ? v : "sovereign");
+                    }}
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all appearance-none"
+                  >
+                    <option value="sovereign">المحرك السيادي (Ollama — Llama 3.1 70B افتراضياً) — موصى به</option>
+                    <option value="gemini">السحابة — Gemini Flash</option>
+                    <option value="openai">السحابة — GPT-4o (OpenAI)</option>
+                  </select>
+                  <p className="text-xs leading-relaxed text-mist px-1">
+                    المحرك السيادي يستخدم عنوان Ollama من متغيرات البيئة (مثل LOCAL_OLLAMA_URL). التضمين والبحث في الخزنة يستخدمان مزود التضمين أدناه.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <label
                     htmlFor="provider"
                     className="flex items-center gap-2 text-sm font-bold text-charcoal"
                   >
                     <Plug size={16} className="text-mist" />
-                    مزود الذكاء الاصطناعي (AI Provider)
+                    مزود التضمين والخزنة الذكية (Embeddings / RAG)
                   </label>
                   <select
                     id="provider"
@@ -119,14 +216,14 @@ export default function SettingsPage() {
                     onChange={(e) => setAiProvider(e.target.value === "openai" ? "openai" : "gemini")}
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all appearance-none"
                   >
-                    <option value="gemini">جوجل جيمني (مجاني/Gemini)</option>
-                    <option value="openai">أوبن إيه آي (OpenAI)</option>
+                    <option value="gemini">جوجل جيمني (Gemini Embeddings)</option>
+                    <option value="openai">أوبن إيه آي (OpenAI Embeddings)</option>
                   </select>
                 </div>
 
-                <div className="space-y-3">
-                  {aiProvider === "openai" ? (
-                    <>
+                <div className="space-y-6">
+                  {(aiProvider === "openai" || generationEngine === "openai") ? (
+                    <div className="space-y-3">
                       <label
                         htmlFor="openaiKey"
                         className="flex items-center gap-2 text-sm font-bold text-charcoal"
@@ -139,17 +236,21 @@ export default function SettingsPage() {
                         name="openaiKey"
                         type="password"
                         autoComplete="off"
-                        value={openaiApiKey}
-                        onChange={(e) => setOpenaiApiKey(e.target.value)}
+                        value={openaiKeyDraft}
+                        onChange={(e) => setOpenaiKeyDraft(e.target.value)}
                         className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all"
                         placeholder="sk-••••••••••••••••••••••••"
                       />
                       <p className="text-xs leading-relaxed text-mist px-1">
-                        يُستخدم هذا المفتاح للتضمين والبحث (RAG) والتوليد عند اختيار OpenAI.
+                        يُستخدم للتضمين عند اختيار OpenAI للخزنة، وللتوليد السحابي عند اختيار GPT في محرك العروض.
                       </p>
-                    </>
-                  ) : (
-                    <>
+                      {hasOpenAiKey && !openaiKeyDraft.trim() ? (
+                        <p className="text-xs font-medium text-emerald-800 px-1">يوجد مفتاح محفوظ. اكتب مفتاحاً جديداً فقط إذا أردت الاستبدال.</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {(aiProvider === "gemini" || generationEngine === "gemini") ? (
+                    <div className="space-y-3">
                       <label
                         htmlFor="geminiKey"
                         className="flex items-center gap-2 text-sm font-bold text-charcoal"
@@ -162,53 +263,60 @@ export default function SettingsPage() {
                         name="geminiKey"
                         type="password"
                         autoComplete="off"
-                        value={geminiApiKey}
-                        onChange={(e) => setGeminiApiKey(e.target.value)}
+                        value={geminiKeyDraft}
+                        onChange={(e) => setGeminiKeyDraft(e.target.value)}
                         className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all"
                         placeholder="AIzaSy•••••••••••••••••••••••"
                       />
                       <p className="text-xs leading-relaxed text-mist px-1">
-                        يُستخدم هذا المفتاح للتوليد عبر Gemini عند اختيار مزود Gemini.
+                        يُستخدم للتضمين عند اختيار Gemini للخزنة، وللتوليد السحابي عند اختيار Gemini Flash في محرك العروض.
                       </p>
-                    </>
-                  )}
+                      {hasGeminiKey && !geminiKeyDraft.trim() ? (
+                        <p className="text-xs font-medium text-emerald-800 px-1">يوجد مفتاح محفوظ. اكتب مفتاحاً جديداً فقط إذا أردت الاستبدال.</p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
 
-                {aiProvider === "openai" ? (
+                {aiProvider === "openai" || generationEngine === "openai" ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-3">
-                      <label htmlFor="emb" className="flex items-center gap-2 text-sm font-bold text-charcoal">
-                        <Box size={16} className="text-mist" />
-                        نموذج التضمين
-                      </label>
-                      <select
-                        id="emb"
-                        value={embeddingModel}
-                        onChange={(e) => setEmbeddingModel(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all appearance-none"
-                      >
-                        <option value="text-embedding-3-small">text-embedding-3-small (أسرع)</option>
-                        <option value="text-embedding-3-large">text-embedding-3-large (أدق)</option>
-                        <option value="text-embedding-ada-002">text-embedding-ada-002 (كلاسيكي)</option>
-                      </select>
-                    </div>
+                    {aiProvider === "openai" ? (
+                      <div className="space-y-3">
+                        <label htmlFor="emb" className="flex items-center gap-2 text-sm font-bold text-charcoal">
+                          <Box size={16} className="text-mist" />
+                          نموذج التضمين
+                        </label>
+                        <select
+                          id="emb"
+                          value={embeddingModel}
+                          onChange={(e) => setEmbeddingModel(e.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all appearance-none"
+                        >
+                          <option value="text-embedding-3-small">text-embedding-3-small (أسرع)</option>
+                          <option value="text-embedding-3-large">text-embedding-3-large (أدق)</option>
+                          <option value="text-embedding-ada-002">text-embedding-ada-002 (كلاسيكي)</option>
+                        </select>
+                      </div>
+                    ) : null}
 
-                    <div className="space-y-3">
-                      <label htmlFor="chat" className="flex items-center gap-2 text-sm font-bold text-charcoal">
-                        <Cpu size={16} className="text-mist" />
-                        نموذج التوليد
-                      </label>
-                      <select
-                        id="chat"
-                        value={chatModel}
-                        onChange={(e) => setChatModel(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all appearance-none"
-                      >
-                        <option value="gpt-4o-mini">gpt-4o-mini (اقتصادي)</option>
-                        <option value="gpt-4o">gpt-4o (قوي جداً)</option>
-                        <option value="o1-preview">o1-preview (تفكير عميق)</option>
-                      </select>
-                    </div>
+                    {generationEngine === "openai" ? (
+                      <div className="space-y-3">
+                        <label htmlFor="chat" className="flex items-center gap-2 text-sm font-bold text-charcoal">
+                          <Cpu size={16} className="text-mist" />
+                          نموذج التوليد (OpenAI)
+                        </label>
+                        <select
+                          id="chat"
+                          value={chatModel}
+                          onChange={(e) => setChatModel(e.target.value)}
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all appearance-none"
+                        >
+                          <option value="gpt-4o-mini">gpt-4o-mini (اقتصادي)</option>
+                          <option value="gpt-4o">gpt-4o (قوي جداً)</option>
+                          <option value="o1-preview">o1-preview (تفكير عميق)</option>
+                        </select>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 

@@ -11,7 +11,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { UserModelSettings } from "@/lib/model-gateway";
+import type { GenerationEngine, UserModelSettings } from "@/lib/model-gateway";
 
 export async function fetchUserModelSettings(
   supabase: SupabaseClient,
@@ -27,8 +27,13 @@ export async function fetchUserModelSettings(
     throw new Error(error.message);
   }
 
+  const ge = data?.generation_engine as string | undefined;
+  const generationEngine: GenerationEngine =
+    ge === "gemini" || ge === "openai" ? ge : "sovereign";
+
   return {
     aiProvider: data?.ai_provider === "openai" ? "openai" : "gemini",
+    generationEngine,
     modelApiKey: data?.model_api_key ?? null,
     geminiApiKey: data?.gemini_api_key ?? null,
     embeddingModel: data?.embedding_model ?? "text-embedding-3-small",
@@ -41,6 +46,7 @@ export async function upsertUserSettings(
   userId: string,
   fields: {
     ai_provider?: "openai" | "gemini";
+    generation_engine?: "sovereign" | "gemini" | "openai";
     model_api_key?: string | null;
     gemini_api_key?: string | null;
     embedding_model?: string;

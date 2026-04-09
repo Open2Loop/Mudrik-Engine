@@ -10,6 +10,7 @@
  * حقوق الملكية محفوظة (ج) ٢٠٢٦ - المؤلف: البراء
  */
 
+import { logApiError } from "@/lib/api-errors";
 import { assertEmbeddingVector, EMBEDDING_VECTOR_DIMENSIONS } from "@/lib/embedding-config";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -24,8 +25,13 @@ function resolveGeminiApiKey(settings: UserModelSettings): string | null {
 
 export type AiProvider = "openai" | "gemini";
 
+/** Proposal text generation routing (embeddings still use aiProvider). */
+export type GenerationEngine = "sovereign" | "gemini" | "openai";
+
 export type UserModelSettings = {
   aiProvider: AiProvider;
+  /** Local Ollama (Llama-class, configurable) vs cloud chat models. */
+  generationEngine: GenerationEngine;
   modelApiKey: string | null;
   geminiApiKey: string | null;
   embeddingModel: string;
@@ -60,13 +66,11 @@ export async function embedTexts(
         assertEmbeddingVector(v, `دفعة ${i + 1}`);
         vectors.push(v);
       } catch (e) {
-        console.error(e);
         const msg = e instanceof Error ? e.message : "فشل إنشاء التضمينات عبر Gemini.";
-        console.error("[mudrik] Gemini embed failed", { index: i, error: msg });
+        logApiError(`model-gateway/embedTexts/gemini-batch-${i + 1}`, msg);
         throw new Error(msg);
       }
     }
-    console.info("[mudrik] Gemini embed ok", { count: vectors.length });
     return vectors;
   }
 
@@ -123,7 +127,7 @@ export async function completeJson(
       const result = await model.generateContent(prompt);
       text = result.response.text();
     } catch (e) {
-      console.error(e);
+      logApiError("model-gateway/completeJson/gemini", e);
       const raw = e instanceof Error ? e.message : String(e ?? "");
       if (raw.includes("404") && raw.includes(GEMINI_CHAT_MODEL)) {
         throw new Error("مفتاح Gemini الحالي لا يملك صلاحية الوصول إلى نموذج gemini-2.5-flash. تحقق من تفعيل Gemini API على المشروع وأن المفتاح من Google AI Studio/Generative Language API.");
@@ -184,7 +188,7 @@ export async function completeText(
       const result = await model.generateContent(prompt);
       text = result.response.text();
     } catch (e) {
-      console.error(e);
+      logApiError("model-gateway/completeText/gemini", e);
       const raw = e instanceof Error ? e.message : String(e ?? "");
       if (raw.includes("404") && raw.includes(GEMINI_CHAT_MODEL)) {
         throw new Error("مفتاح Gemini الحالي لا يملك صلاحية الوصول إلى نموذج gemini-2.5-flash. تحقق من تفعيل Gemini API على المشروع وأن المفتاح من Google AI Studio/Generative Language API.");

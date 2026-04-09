@@ -12,6 +12,11 @@
 
 "use client";
 
+/**
+ * Engine UI: POST /api/engine/generate.
+ * System prompt locked in ENGINE_FULL_SYSTEM_PROMPT_AR; sources: كراسة_شروط + سجل_خبرات chunks only.
+ */
+
 import { Fragment, useState, type ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
 import {
@@ -78,6 +83,24 @@ function stripMarkdownForClipboard(text: string): string {
   return text.replace(/[*#]/g, "");
 }
 
+/** Strips ```json ... ``` or ``` ... ``` wrappers so JSON.parse / display succeeds. */
+function stripMarkdownCodeFence(raw: string): string {
+  const t = raw.replace(/\r\n/g, "\n").trim();
+  const fenced = t.match(/```(?:json|text|markdown)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) return fenced[1].trim();
+  return t;
+}
+
+function parseJsonErrorPayload(raw: string): { error?: string } | null {
+  const cleaned = stripMarkdownCodeFence(raw);
+  if (!cleaned) return null;
+  try {
+    return JSON.parse(cleaned) as { error?: string };
+  } catch {
+    return null;
+  }
+}
+
 export default function EnginePage() {
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState<"idle" | "analyze" | "generate" | "build">("idle");
@@ -107,19 +130,35 @@ export default function EnginePage() {
       return;
     }
     setBusy("analyze");
-    const fd = new FormData();
-    fd.set("rfp", file);
-    const res = await fetch("/api/engine/analyze", { method: "POST", body: fd });
-    const data = (await res.json()) as { error?: string; text?: string; filename?: string };
-    setBusy("idle");
-    if (!res.ok) {
-      setNotice({ message: data.error ?? "تعذر تحليل الملف.", type: "error" });
-      return;
+    try {
+      const fd = new FormData();
+      fd.set("rfp", file);
+      const res = await fetch("/api/engine/analyze", { method: "POST", body: fd });
+      const raw = await res.text();
+      if (!res.ok) {
+        const parsed = parseJsonErrorPayload(raw);
+        const msg =
+          (parsed?.error && String(parsed.error).trim()) ||
+          (raw.trim() ? raw.trim().slice(0, 500) : "تعذر تحليل الملف.");
+        setNotice({ message: msg, type: "error" });
+        return;
+      }
+      let data: { text?: string; filename?: string };
+      try {
+        data = JSON.parse(stripMarkdownCodeFence(raw)) as { text?: string; filename?: string };
+      } catch {
+        setNotice({ message: "استجابة غير صالحة من خادم التحليل.", type: "error" });
+        return;
+      }
+      setRfpText(data.text ?? "");
+      setFilename(data.filename ?? file.name);
+      setDraft(null);
+      setChunks(null);
+    } catch {
+      setNotice({ message: "تعذر الاتصال بخادم التحليل. تحقق من الشبكة وأعد المحاولة.", type: "error" });
+    } finally {
+      setBusy("idle");
     }
-    setRfpText(data.text ?? "");
-    setFilename(data.filename ?? file.name);
-    setDraft(null);
-    setChunks(null);
   }
 
   async function runGenerate() {
@@ -129,22 +168,44 @@ export default function EnginePage() {
     }
     setBusy("generate");
     setNotice(null);
-    const res = await fetch("/api/engine/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rfpText }),
-    });
-    setBusy("idle");
-    if (!res.ok) {
-      const data = (await res.json()) as { error?: string };
-      setNotice({ message: data.error ?? "تعذر التوليد.", type: "error" });
-      return;
+    try {
+      const res = await fetch("/api/engine/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rfpText }),
+      });
+      const raw = await res.text();
+
+      if (!res.ok) {
+        const parsed = parseJsonErrorPayload(raw);
+        const baseMsg =
+          (parsed?.error && String(parsed.error).trim()) ||
+          (raw.trim() ? raw.trim().slice(0, 500) : "تعذر التوليد.");
+        const timeoutLike = /timeout|مهلة|AbortError|TimeoutError/i.test(baseMsg);
+        const msg = timeoutLike
+          ? "انتهت مهلة التوليد لهذا الطلب. قلّل حجم النص أو أعد المحاولة بعد لحظات."
+          : baseMsg;
+        setNotice({ message: msg, type: "error" });
+        return;
+      }
+
+      const text = stripMarkdownCodeFence(raw);
+      setDraft(text.trim() || null);
+      const header = res.headers.get("x-context-chunks-used");
+      const used = header ? Number(header) : null;
+      setChunks(Number.isFinite(used) ? used : null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      const timeoutLike = /timeout|مهلة|AbortError|TimeoutError/i.test(msg);
+      setNotice({
+        message: timeoutLike
+          ? "انتهت مهلة التوليد قبل اكتمال المسودة. حاول مرة أخرى أو قلّل حجم المدخلات."
+          : "تعذر إتمام التوليد. تحقق من الشبكة أو أعد المحاولة لاحقاً.",
+        type: "error",
+      });
+    } finally {
+      setBusy("idle");
     }
-    const text = await res.text();
-    setDraft(text.trim() || null);
-    const header = res.headers.get("x-context-chunks-used");
-    const used = header ? Number(header) : null;
-    setChunks(Number.isFinite(used) ? used : null);
   }
 
   return (
@@ -153,7 +214,10 @@ export default function EnginePage() {
         <div className="lg:col-span-7 space-y-8">
           <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
             <p className="text-base leading-relaxed text-mist mb-8">
-              قم برفع كراسة الشروط (PDF) لاستخراج متطلبات المشروع، ثم دع الذكاء الاصطناعي يولد لك مسودة العرض الفني بناءً على خبراتكم السابقة.
+              ارفع كراسة الشروط (PDF أو DOCX) لتبدأ صياغة عرضك الفني الفائز. يعمل المحرك السيادي لمُدرك
+              بمثابة استشاري تقني أول؛ لتوليد مسودة هندسية عالية الكثافة تربط اشتراطات الكراسة بدقة بالغة
+              مع سجل إنجازاتك واعتماداتك العالمية الموثقة في الخزنة — قد تستغرق عملية التوليد الاحترافية
+              بضع دقائق لضمان الجودة المتناهية.
             </p>
 
             <div

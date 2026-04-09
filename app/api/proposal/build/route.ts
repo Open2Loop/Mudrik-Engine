@@ -11,6 +11,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { API_ERROR_UNEXPECTED_AR, logApiError } from "@/lib/api-errors";
 import { normalizeProposalJson, proposalToMatrixText } from "@/lib/proposal-schema";
 import { renderProposalDocx } from "@/lib/proposal-docx";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -61,8 +62,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (e) {
-    console.error("CRITICAL ERROR IN /api/proposal/build:", e);
-    const msg = e instanceof Error ? e.message : "خطأ غير متوقع";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    logApiError("proposal/build", e);
+    return NextResponse.json({ error: API_ERROR_UNEXPECTED_AR }, { status: 500 });
   }
 }

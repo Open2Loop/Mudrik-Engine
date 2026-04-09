@@ -10,6 +10,7 @@
  * حقوق الملكية محفوظة (ج) ٢٠٢٦ - المؤلف: البراء
  */
 
+import { logApiError } from "@/lib/api-errors";
 import pdf from "pdf-parse";
 import mammoth from "mammoth";
 
@@ -22,7 +23,7 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
     const text = typeof result.text === "string" ? result.text : "";
     return text.replace(/\u0000/g, "").trim();
   } catch (error) {
-    console.error("PDF Extraction Error:", error);
+    logApiError("document-parser/pdf", error);
     throw new Error("فشل استخراج النص من ملف PDF. قد يكون الملف محمياً أو تالفاً.");
   }
 }
@@ -36,7 +37,7 @@ export async function extractTextFromDocxBuffer(buffer: Buffer): Promise<string>
     const text = typeof result.value === "string" ? result.value : "";
     return text.trim();
   } catch (error) {
-    console.error("DOCX Extraction Error:", error);
+    logApiError("document-parser/docx", error);
     throw new Error("فشل استخراج النص من ملف Word. يرجى التأكد من أن الملف بصيغة .docx وغير تالف.");
   }
 }
