@@ -112,9 +112,9 @@ export function getLocalOllamaNumPredict(): number {
 export function getLocalOllamaTimeoutMs(): number {
   const raw = process.env.LOCAL_OLLAMA_TIMEOUT_MS?.trim();
   const n = raw ? Number(raw) : NaN;
-  // Enforce a minimum 120s for deep sovereign generation.
-  if (Number.isFinite(n) && n >= 120_000) return Math.floor(n);
-  return 600_000;
+  // Enforce 300s floor for deep sovereign generation.
+  if (Number.isFinite(n) && n >= 300_000) return Math.floor(n);
+  return 300_000;
 }
 
 async function ollamaChat(

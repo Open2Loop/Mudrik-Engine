@@ -19,8 +19,8 @@ import { fetchUserModelSettings } from "@/lib/user-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-/** Raised for Llama 3.1 70B sequential sections; cap lower on Vercel Hobby if builds fail. */
-export const maxDuration = 800;
+/** 300s timeout for deep 70B sequential generation. */
+export const maxDuration = 300;
 
 const RFP_CAP = 24000;
 /** Prior sections text cap for anti-repeat prompt (chars). */
@@ -223,7 +223,12 @@ const SEQUENTIAL_SECTIONS: { title: string; focus: string }[] = [
 ];
 
 export async function POST(request: Request) {
-  let body: { rfpText?: string; documentId?: string };
+  let body: {
+    rfpText?: string;
+    documentId?: string;
+    resumeFromSection?: number;
+    previousSections?: string[];
+  };
   try {
     body = (await request.json()) as { rfpText?: string; documentId?: string };
   } catch {
@@ -312,9 +317,32 @@ export async function POST(request: Request) {
 
     const fullSystem = ENGINE_FULL_SYSTEM_PROMPT_AR;
 
+    const resumeFrom = Number.isInteger(body.resumeFromSection) ? Number(body.resumeFromSection) : 0;
+    const safeResumeFrom = Math.min(Math.max(resumeFrom, 0), SEQUENTIAL_SECTIONS.length - 1);
+    const previousSections = Array.isArray(body.previousSections)
+      ? body.previousSections.map((s) => String(s ?? "").trim())
+      : [];
+
     const parts: string[] = [];
+    const sectionBodies: string[] = [];
     let priorBodies = "";
-    for (let i = 0; i < SEQUENTIAL_SECTIONS.length; i += 1) {
+    if (safeResumeFrom > 0) {
+      for (let i = 0; i < safeResumeFrom; i += 1) {
+        const sec = SEQUENTIAL_SECTIONS[i]!;
+        const prev = previousSections[i] ?? "";
+        if (!prev) {
+          return Response.json(
+            { error: "بيانات الاستئناف غير مكتملة. أعد تشغيل التوليد من البداية." },
+            { status: 400 },
+          );
+        }
+        sectionBodies.push(prev);
+        parts.push(`${sec.title}\n\n${prev}`);
+        priorBodies += `${prev}\n\n`;
+      }
+    }
+
+    for (let i = safeResumeFrom; i < SEQUENTIAL_SECTIONS.length; i += 1) {
       const sec = SEQUENTIAL_SECTIONS[i]!;
       const sectionContext = selectContextForSection(contextBlocks, sec.focus);
       const sharedCtx = buildSharedContextBlock(excerpt, sectionContext);
@@ -345,6 +373,8 @@ export async function POST(request: Request) {
               error: timeoutLike
                 ? "استغرقت المعالجة وقتاً أطول من المهلة لقسم من المسودة. أعد المحاولة أو قلّل حجم المدخلات."
                 : "فشل توليد أحد أقسام المسودة بعد محاولتين. أعد المحاولة أو خفّض حجم النص.",
+              failedSection: i,
+              partialSections: sectionBodies,
             },
             { status: 500 },
           );
@@ -377,6 +407,7 @@ export async function POST(request: Request) {
       }
 
       priorBodies += `${cleaned}\n\n`;
+      sectionBodies.push(cleaned);
       parts.push(`${sec.title}\n\n${cleaned}`);
     }
 

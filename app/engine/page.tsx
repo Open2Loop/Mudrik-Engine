@@ -91,11 +91,11 @@ function stripMarkdownCodeFence(raw: string): string {
   return t;
 }
 
-function parseJsonErrorPayload(raw: string): { error?: string } | null {
+function parseJsonErrorPayload(raw: string): { error?: string; failedSection?: number; partialSections?: string[] } | null {
   const cleaned = stripMarkdownCodeFence(raw);
   if (!cleaned) return null;
   try {
-    return JSON.parse(cleaned) as { error?: string };
+    return JSON.parse(cleaned) as { error?: string; failedSection?: number; partialSections?: string[] };
   } catch {
     return null;
   }
@@ -107,6 +107,8 @@ export default function EnginePage() {
   const [rfpText, setRfpText] = useState("");
   const [filename, setFilename] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
+  const [partialSections, setPartialSections] = useState<string[] | null>(null);
+  const [failedSection, setFailedSection] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ message: string; type: "error" | "info" } | null>(null);
   const [chunks, setChunks] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
@@ -161,7 +163,7 @@ export default function EnginePage() {
     }
   }
 
-  async function runGenerate() {
+  async function runGenerate(mode: "fresh" | "resume" = "fresh") {
     if (!rfpText.trim()) {
       setNotice({ message: "لا يوجد نص لكراسة الشروط. حمّل ملفاً أولاً.", type: "error" });
       return;
@@ -169,10 +171,22 @@ export default function EnginePage() {
     setBusy("generate");
     setNotice(null);
     try {
+      const payload: {
+        rfpText: string;
+        resumeFromSection?: number;
+        previousSections?: string[];
+      } = { rfpText };
+      if (mode === "resume" && failedSection !== null && partialSections && partialSections.length > 0) {
+        payload.resumeFromSection = failedSection;
+        payload.previousSections = partialSections;
+      } else {
+        setPartialSections(null);
+        setFailedSection(null);
+      }
       const res = await fetch("/api/engine/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rfpText }),
+        body: JSON.stringify(payload),
       });
       const raw = await res.text();
 
@@ -185,12 +199,34 @@ export default function EnginePage() {
         const msg = timeoutLike
           ? "انتهت مهلة التوليد لهذا الطلب. قلّل حجم النص أو أعد المحاولة بعد لحظات."
           : baseMsg;
+        if (
+          parsed &&
+          Number.isInteger(parsed.failedSection) &&
+          Array.isArray(parsed.partialSections) &&
+          parsed.partialSections.length > 0
+        ) {
+          const sec = parsed.failedSection as number;
+          const partial = parsed.partialSections.map((s) => String(s ?? ""));
+          setPartialSections(partial);
+          setFailedSection(sec);
+          const stitched = partial
+            .map((body, i) => `${i + 1})\n\n${body}`)
+            .join("\n\n");
+          if (stitched.trim()) setDraft(stitched);
+          setNotice({
+            message: `${msg} تم حفظ الأقسام المكتملة. يمكنك استئناف التوليد من القسم ${sec + 1}.`,
+            type: "error",
+          });
+          return;
+        }
         setNotice({ message: msg, type: "error" });
         return;
       }
 
       const text = stripMarkdownCodeFence(raw);
       setDraft(text.trim() || null);
+      setPartialSections(null);
+      setFailedSection(null);
       const header = res.headers.get("x-context-chunks-used");
       const used = header ? Number(header) : null;
       setChunks(Number.isFinite(used) ? used : null);
@@ -308,7 +344,23 @@ export default function EnginePage() {
                 )}
                 توليد المسودة الذكية
               </button>
+              {failedSection !== null && partialSections && partialSections.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void runGenerate("resume")}
+                  disabled={busy !== "idle" || !rfpText.trim()}
+                  className="flex items-center gap-2 rounded-full border border-midnight/25 bg-white px-6 py-4 text-sm font-bold text-midnight transition hover:bg-slate-50 disabled:opacity-50"
+                >
+                  استئناف من القسم {failedSection + 1}
+                </button>
+              )}
             </div>
+            {busy === "generate" && (
+              <div className="mt-4 flex items-center gap-3 rounded-2xl bg-blue-50 px-5 py-3 border border-blue-100">
+                <Loader2 size={16} className="animate-spin text-blue-700" />
+                <span className="text-sm font-semibold text-blue-700">Processing Deep Analysis...</span>
+              </div>
+            )}
 
             {notice && (
               <div className={`mt-6 flex items-center gap-3 rounded-2xl px-5 py-4 text-sm font-medium animate-in fade-in slide-in-from-top-2 ${
