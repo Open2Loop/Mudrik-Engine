@@ -230,8 +230,8 @@ export default function EnginePage() {
           setPartialSections(partial);
           setFailedSection(sec);
           const stitched = partial
-            .map((body, i) => `${i + 1})\\n\\n${body}`)
-            .join("\\n\\n");
+            .map((body, i) => `${i + 1})\n\n${body}`)
+            .join("\n\n");
           if (stitched.trim()) setDraft(stitched);
           setNotice({
             message: `${msg} تم حفظ الأقسام المكتملة. يمكنك استئناف التوليد من القسم ${sec + 1}.`,

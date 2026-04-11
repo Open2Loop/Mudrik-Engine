@@ -451,7 +451,7 @@ export async function generateSovereignStream(
         done = readerDone;
         if (value) {
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\\n");
+          const lines = buffer.split("\n");
           buffer = lines.pop() || "";
           for (const line of lines) {
             if (!line.trim()) continue;
