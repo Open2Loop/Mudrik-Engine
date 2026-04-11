@@ -15,10 +15,10 @@ import { IBM_Plex_Sans_Arabic } from "next/font/google";
 import "./globals.css";
 
 const ibmPlexSansArabic = IBM_Plex_Sans_Arabic({
-  subsets: ["arabic", "latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-ibm-plex-sans-arabic",
+  weight: ["300", "400", "500", "600", "700"],
+  subsets: ["arabic"],
   display: "swap",
+  variable: "--font-ibm-plex",
 });
 
 export const metadata: Metadata = {
@@ -33,8 +33,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html dir="rtl" lang="ar" className={ibmPlexSansArabic.variable}>
-      <body className={`min-h-screen bg-white text-charcoal antialiased font-sans ${ibmPlexSansArabic.className}`}>
+    <html dir="rtl" lang="ar">
+      <body
+        className={`${ibmPlexSansArabic.variable} ${ibmPlexSansArabic.className} min-h-screen bg-white font-sans text-charcoal antialiased`}
+      >
         {children}
       </body>
     </html>

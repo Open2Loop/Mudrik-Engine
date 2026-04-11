@@ -53,6 +53,7 @@ export const ENGINE_FULL_SYSTEM_PROMPT_AR = `${ENGINE_BINDING_FACTS_AR}\n\n${ENG
 
 const RETRY_DELAY_MS = 1000;
 const MAX_RETRIES = 3;
+const OLLAMA_ENDPOINTS = ["/api/chat", "/api/generate"] as const;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -112,9 +113,206 @@ export function getLocalOllamaNumPredict(): number {
 export function getLocalOllamaTimeoutMs(): number {
   const raw = process.env.LOCAL_OLLAMA_TIMEOUT_MS?.trim();
   const n = raw ? Number(raw) : NaN;
-  // Enforce 300s floor for deep sovereign generation.
-  if (Number.isFinite(n) && n >= 300_000) return Math.floor(n);
-  return 300_000;
+  // Enforce 600s floor for deep sovereign generation.
+  if (Number.isFinite(n) && n >= 600_000) return Math.floor(n);
+  return 600_000;
+}
+
+export type GatewayFailureCode =
+  | "CONNECTION_REFUSED"
+  | "MODEL_CRASH"
+  | "MODEL_NOT_FOUND"
+  | "TIMEOUT"
+  | "BAD_RESPONSE";
+
+export class GatewayError extends Error {
+  code: GatewayFailureCode;
+  status?: number;
+  details?: string;
+
+  constructor(code: GatewayFailureCode, message: string, status?: number, details?: string) {
+    super(message);
+    this.name = "GatewayError";
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}
+
+function classifyGatewayFailure(error: unknown): GatewayError {
+  if (error instanceof GatewayError) return error;
+  const msg = error instanceof Error ? error.message : String(error ?? "");
+  const lower = msg.toLowerCase();
+
+  if (lower.includes("aborterror") || lower.includes("timeouterror") || lower.includes("timed out")) {
+    return new GatewayError("TIMEOUT", msg);
+  }
+  if (
+    lower.includes("econnrefused") ||
+    lower.includes("connection refused") ||
+    lower.includes("fetch failed") ||
+    lower.includes("failed to fetch")
+  ) {
+    return new GatewayError("CONNECTION_REFUSED", msg);
+  }
+  if (
+    lower.includes("500") ||
+    lower.includes("503") ||
+    lower.includes("panic") ||
+    lower.includes("cuda") ||
+    lower.includes("out of memory") ||
+    lower.includes("model")
+  ) {
+    return new GatewayError("MODEL_CRASH", msg);
+  }
+  return new GatewayError("BAD_RESPONSE", msg);
+}
+
+function withAbortTimeout(timeoutMs: number): AbortSignal {
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    return AbortSignal.timeout(timeoutMs);
+  }
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), timeoutMs);
+  return controller.signal;
+}
+
+type OllamaPayload = {
+  model: string;
+  stream: false;
+  options: { temperature: number; top_p: number; num_predict: number };
+  messages?: Array<{ role: "system" | "user"; content: string }>;
+  prompt?: string;
+  system?: string;
+};
+
+function parseOllamaContent(rawText: string): string {
+  let body: { message?: { content?: string }; response?: string; error?: string };
+  try {
+    body = JSON.parse(rawText) as { message?: { content?: string }; response?: string; error?: string };
+  } catch {
+    throw new GatewayError("BAD_RESPONSE", "Non-JSON response from model gateway.", undefined, rawText.slice(0, 600));
+  }
+
+  if (body.error) {
+    const el = body.error.toLowerCase();
+    if (el.includes("not found") && el.includes("model")) {
+      throw new GatewayError("MODEL_NOT_FOUND", body.error, 404, body.error);
+    }
+    throw new GatewayError("MODEL_CRASH", `Model gateway error: ${body.error}`);
+  }
+
+  const content = (body.message?.content ?? body.response ?? "").trim();
+  if (!content) {
+    throw new GatewayError("BAD_RESPONSE", "Model gateway returned empty content.");
+  }
+  return content;
+}
+
+/** True when Ollama reports the requested tag is missing (HTTP 404 + body). */
+function isOllamaModelNotFoundError(error: unknown): boolean {
+  if (!(error instanceof GatewayError)) return false;
+  const blob = `${error.details ?? ""} ${error.message}`.toLowerCase();
+  const looksLikeModelMissing =
+    blob.includes("not found") && (blob.includes("model") || blob.includes("'"));
+  return error.status === 404 || looksLikeModelMissing;
+}
+
+/** Lists locally installed Ollama model names (tags). */
+async function listOllamaInstalledModels(baseUrl: string): Promise<string[]> {
+  const normalized = baseUrl.replace(/\/$/, "");
+  const url = `${normalized}/api/tags`;
+  const startedAt = Date.now();
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      signal: withAbortTimeout(15_000),
+    });
+    const raw = await res.text();
+    if (!res.ok) {
+      console.warn(`[ai-gateway] tags:list failed status=${res.status} elapsed_ms=${Date.now() - startedAt}`);
+      return [];
+    }
+    let data: { models?: Array<{ name?: string }> };
+    try {
+      data = JSON.parse(raw) as { models?: Array<{ name?: string }> };
+    } catch {
+      console.warn(`[ai-gateway] tags:list invalid JSON elapsed_ms=${Date.now() - startedAt}`);
+      return [];
+    }
+    const names = (data.models ?? [])
+      .map((m) => String(m?.name ?? "").trim())
+      .filter(Boolean);
+    console.info(`[ai-gateway] tags:list ok count=${names.length} elapsed_ms=${Date.now() - startedAt}`);
+    return names;
+  } catch (e) {
+    console.warn(`[ai-gateway] tags:list error elapsed_ms=${Date.now() - startedAt}`, e);
+    return [];
+  }
+}
+
+/** Picks a usable tag when the preferred model is missing. */
+function pickInstalledOllamaModel(installed: string[], preferred: string): string | null {
+  if (installed.length === 0) return null;
+  const p = preferred.trim().toLowerCase();
+  const exact = installed.find((n) => n.toLowerCase() === p);
+  if (exact) return exact;
+  const base = preferred.includes(":") ? preferred.split(":")[0]!.trim().toLowerCase() : p;
+  const prefix = installed.find((n) => n.toLowerCase().startsWith(`${base}:`) || n.toLowerCase() === base);
+  if (prefix) return prefix;
+  const llama = installed.find((n) => /llama/i.test(n));
+  if (llama) return llama;
+  return installed[0] ?? null;
+}
+
+async function callOllamaEndpoint(
+  baseUrl: string,
+  endpoint: (typeof OLLAMA_ENDPOINTS)[number],
+  payload: OllamaPayload,
+  timeoutMs: number
+): Promise<string> {
+  const url = `${baseUrl}${endpoint}`;
+  const startedAt = Date.now();
+  console.info(`[ai-gateway] request:start endpoint=${endpoint} model=${payload.model} timeout_ms=${timeoutMs}`);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: withAbortTimeout(timeoutMs),
+      cache: "no-store",
+    });
+  } catch (error) {
+    const classified = classifyGatewayFailure(error);
+    console.error(
+      `[ai-gateway] request:network-fail endpoint=${endpoint} code=${classified.code} elapsed_ms=${Date.now() - startedAt}`,
+      classified.details ?? classified.message
+    );
+    throw classified;
+  }
+
+  const rawText = await res.text();
+  console.info(
+    `[ai-gateway] request:response endpoint=${endpoint} status=${res.status} elapsed_ms=${Date.now() - startedAt} body_chars=${rawText.length}`
+  );
+  if (!res.ok) {
+    const details = rawText.slice(0, 600);
+    const lower = details.toLowerCase();
+    const modelMissing =
+      res.status === 404 && lower.includes("model") && lower.includes("not found");
+    const code: GatewayFailureCode = modelMissing
+      ? "MODEL_NOT_FOUND"
+      : res.status >= 500
+        ? "MODEL_CRASH"
+        : res.status === 408
+          ? "TIMEOUT"
+          : "BAD_RESPONSE";
+    throw new GatewayError(code, `Model gateway HTTP ${res.status}`, res.status, details);
+  }
+
+  return parseOllamaContent(rawText);
 }
 
 async function ollamaChat(
@@ -123,54 +321,162 @@ async function ollamaChat(
   systemPrompt: string,
   userPrompt: string
 ): Promise<string> {
-  const url = `${baseUrl.replace(/\/$/, "")}/api/chat`;
+  const normalizedBase = baseUrl.replace(/\/$/, "");
   const numPredict = getLocalOllamaNumPredict();
   const timeoutMs = getLocalOllamaTimeoutMs();
-  const signal =
-    typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
-      ? AbortSignal.timeout(timeoutMs)
-      : undefined;
-  let res: Response;
+  console.info(
+    `[ai-gateway] sovereign:init base_url=${normalizedBase} model=${model} timeout_ms=${timeoutMs} endpoints=${OLLAMA_ENDPOINTS.join(",")}`
+  );
+
+  const payloadChat: OllamaPayload = {
+    model,
+    stream: false,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    options: { temperature: 0.28, top_p: 0.92, num_predict: numPredict },
+  };
+  const payloadGenerate: OllamaPayload = {
+    model,
+    stream: false,
+    system: systemPrompt,
+    prompt: userPrompt,
+    options: { temperature: 0.28, top_p: 0.92, num_predict: numPredict },
+  };
+
   try {
-    res = await fetch(url, {
+    return await callOllamaEndpoint(normalizedBase, "/api/chat", payloadChat, timeoutMs);
+  } catch (firstError) {
+    const first = classifyGatewayFailure(firstError);
+    console.warn(
+      `[ai-gateway] endpoint-fallback from=/api/chat to=/api/generate reason=${first.code}`,
+      first.details ?? first.message
+    );
+    try {
+      return await callOllamaEndpoint(normalizedBase, "/api/generate", payloadGenerate, timeoutMs);
+    } catch (secondError) {
+      const second = classifyGatewayFailure(secondError);
+      console.error(
+        `[ai-gateway] endpoint-fallback-failed from=/api/chat to=/api/generate code=${second.code}`,
+        second.details ?? second.message
+      );
+      throw second;
+    }
+  }
+}
+
+/** Direct sovereign call for API routes that must stay local-only. */
+export async function generateSovereignText(
+  systemPrompt: string,
+  userPrompt: string
+): Promise<string> {
+  const base = getLocalOllamaBaseUrl();
+  const preferred = getLocalOllamaModel();
+  try {
+    return await ollamaChat(base, preferred, systemPrompt, userPrompt);
+  } catch (first) {
+    if (!isOllamaModelNotFoundError(first)) {
+      throw first instanceof Error ? first : new Error(String(first));
+    }
+    const installed = await listOllamaInstalledModels(base);
+    const fallback = pickInstalledOllamaModel(installed, preferred);
+    if (!fallback || fallback === preferred) {
+      throw new GatewayError(
+        "MODEL_NOT_FOUND",
+        `النموذج المطلوب غير موجود على المحرك المحلي: "${preferred}". نماذج مثبتة: ${installed.length ? installed.join(", ") : "(لا يوجد — نفّذ ollama pull)"}.`,
+        404,
+        first instanceof GatewayError ? first.details : String(first),
+      );
+    }
+    console.warn(`[ai-gateway] model fallback preferred="${preferred}" -> using="${fallback}"`);
+    return ollamaChat(base, fallback, systemPrompt, userPrompt);
+  }
+}
+
+export async function generateSovereignStream(
+  systemPrompt: string,
+  userPrompt: string
+): Promise<ReadableStream> {
+  const base = getLocalOllamaBaseUrl().replace(/\/$/, "");
+  const preferred = getLocalOllamaModel();
+  const numPredict = getLocalOllamaNumPredict();
+  const timeoutMs = getLocalOllamaTimeoutMs();
+
+  async function tryStream(modelName: string): Promise<Response> {
+    return fetch(`${base}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        stream: false,
+        model: modelName,
+        stream: true,
+        system: systemPrompt,
+        prompt: userPrompt,
         options: { temperature: 0.28, top_p: 0.92, num_predict: numPredict },
       }),
-      signal,
+      signal: withAbortTimeout(timeoutMs),
+      cache: "no-store",
     });
-  } catch (e) {
-    const name = e instanceof Error ? e.name : "";
-    if (name === "AbortError" || name === "TimeoutError") {
-      throw new Error(
-        `انتهت مهلة المحرك المحلي (${Math.round(timeoutMs / 1000)} ث). زِد LOCAL_OLLAMA_TIMEOUT_MS أو خفّض حجم المدخلات.`,
-      );
-    }
-    throw e;
   }
-  const rawText = await res.text();
-  if (!res.ok) {
-    throw new Error(`المحرك المحلي (${res.status}): ${rawText.slice(0, 500)}`);
-  }
-  let body: { message?: { content?: string }; error?: string };
+
+  let res: Response;
   try {
-    body = JSON.parse(rawText) as { message?: { content?: string }; error?: string };
-  } catch {
-    throw new Error(`استجابة غير JSON من المحرك المحلي: ${rawText.slice(0, 200)}`);
+    res = await tryStream(preferred);
+    if (!res.ok && res.status === 404) {
+      const installed = await listOllamaInstalledModels(base);
+      const fallback = pickInstalledOllamaModel(installed, preferred);
+      if (fallback && fallback !== preferred) {
+        res = await tryStream(fallback);
+      } else {
+        throw new GatewayError("MODEL_NOT_FOUND", "النموذج غير موجود");
+      }
+    }
+    if (!res.ok) {
+      throw new GatewayError("BAD_RESPONSE", `HTTP ${res.status}`);
+    }
+  } catch (error) {
+    throw classifyGatewayFailure(error);
   }
-  if (body.error) throw new Error(body.error);
-  const content = body.message?.content;
-  if (!content || !String(content).trim()) {
-    throw new Error("استجابة فارغة من المحرك المحلي (Ollama).");
-  }
-  return String(content).trim();
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder("utf-8");
+  const encoder = new TextEncoder();
+
+  return new ReadableStream({
+    async start(controller) {
+      let buffer = "";
+      let done = false;
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const data = JSON.parse(line);
+              if (data.response) {
+                controller.enqueue(encoder.encode(data.response));
+              }
+            } catch (e) {
+              // ignore partial lines
+            }
+          }
+        }
+      }
+      if (buffer.trim()) {
+        try {
+          const data = JSON.parse(buffer);
+          if (data.response) {
+            controller.enqueue(encoder.encode(data.response));
+          }
+        } catch { } // ignore
+      }
+      controller.close();
+    }
+  });
 }
 
 /**
@@ -183,10 +489,8 @@ export async function completeGeneration(
   userPrompt: string
 ): Promise<string> {
   if (settings.generationEngine === "sovereign") {
-    const base = getLocalOllamaBaseUrl();
-    const model = getLocalOllamaModel();
     try {
-      return await ollamaChat(base, model, systemPrompt, userPrompt);
+      return await generateSovereignText(systemPrompt, userPrompt);
     } catch (e) {
       const allowCloud = process.env.SOVEREIGN_AUTO_CLOUD_FALLBACK !== "false";
       if (allowCloud) {

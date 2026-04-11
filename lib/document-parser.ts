@@ -14,6 +14,32 @@ import { logApiError } from "@/lib/api-errors";
 import pdf from "pdf-parse";
 import mammoth from "mammoth";
 
+const PDF_MIME = "application/pdf";
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const MSWORD_MIME = "application/msword";
+
+/** Infer MIME from filename when the browser sends empty or generic types. */
+export function inferMimeFromFilename(filename: string): string | null {
+  const lower = filename.trim().toLowerCase();
+  if (lower.endsWith(".pdf")) return PDF_MIME;
+  if (lower.endsWith(".docx")) return DOCX_MIME;
+  if (lower.endsWith(".doc")) return MSWORD_MIME;
+  return null;
+}
+
+/** Normalize OCR/PDF noise for cleaner downstream RAG and generation. */
+export function normalizeExtractedText(text: string): string {
+  return text
+    .replace(/\u0000/g, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t\f\v]+\n/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+}
+
 /**
  * Extracts text from a PDF buffer.
  */
@@ -21,7 +47,7 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> 
   try {
     const result = await pdf(buffer);
     const text = typeof result.text === "string" ? result.text : "";
-    return text.replace(/\u0000/g, "").trim();
+    return normalizeExtractedText(text);
   } catch (error) {
     logApiError("document-parser/pdf", error);
     throw new Error("فشل استخراج النص من ملف PDF. قد يكون الملف محمياً أو تالفاً.");
@@ -35,7 +61,7 @@ export async function extractTextFromDocxBuffer(buffer: Buffer): Promise<string>
   try {
     const result = await mammoth.extractRawText({ buffer });
     const text = typeof result.value === "string" ? result.value : "";
-    return text.trim();
+    return normalizeExtractedText(text);
   } catch (error) {
     logApiError("document-parser/docx", error);
     throw new Error("فشل استخراج النص من ملف Word. يرجى التأكد من أن الملف بصيغة .docx وغير تالف.");
@@ -44,16 +70,29 @@ export async function extractTextFromDocxBuffer(buffer: Buffer): Promise<string>
 
 /**
  * Extracts text from a document buffer based on its type.
+ * If `mimeType` is empty or generic, pass `filename` so the extension can disambiguate PDF vs DOCX.
  */
-export async function extractTextFromBuffer(buffer: Buffer, mimeType: string): Promise<string> {
-  if (mimeType === "application/pdf") {
-    return extractTextFromPdfBuffer(buffer);
-  } else if (
-    mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    mimeType === "application/msword"
-  ) {
-    return extractTextFromDocxBuffer(buffer);
-  } else {
-    throw new Error(`نوع الملف غير مدعوم: ${mimeType}`);
+export async function extractTextFromBuffer(
+  buffer: Buffer,
+  mimeType: string,
+  filename?: string
+): Promise<string> {
+  let mime = (mimeType || "").trim().toLowerCase();
+  if (!mime || mime === "application/octet-stream" || mime === "") {
+    const inferred = filename ? inferMimeFromFilename(filename) : null;
+    if (inferred) mime = inferred.toLowerCase();
   }
+
+  if (mime === PDF_MIME.toLowerCase()) {
+    return extractTextFromPdfBuffer(buffer);
+  }
+  if (mime === DOCX_MIME.toLowerCase()) {
+    return extractTextFromDocxBuffer(buffer);
+  }
+  if (mime === MSWORD_MIME.toLowerCase()) {
+    throw new Error(
+      "صيغة .doc القديمة غير مدعومة للاستخراج الآمن. احفظ الملف كـ .docx أو PDF وأعد المحاولة.",
+    );
+  }
+  throw new Error(`نوع الملف غير مدعوم: ${mimeType || mime || "(غير معروف)"}`);
 }

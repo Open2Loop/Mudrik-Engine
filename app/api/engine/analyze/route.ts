@@ -12,7 +12,7 @@
 
 import { NextResponse } from "next/server";
 import { API_ERROR_UNEXPECTED_AR, logApiError } from "@/lib/api-errors";
-import { extractTextFromBuffer } from "@/lib/document-parser";
+import { extractTextFromBuffer, inferMimeFromFilename } from "@/lib/document-parser";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -41,14 +41,31 @@ export async function POST(request: Request) {
     }
 
     const acceptedTypes = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-    if (file.type && !acceptedTypes.includes(file.type)) {
-      return NextResponse.json({ error: "يُقبل ملفات PDF أو DOCX فقط." }, { status: 400 });
+    const reported = (file.type || "").trim();
+    const inferred = inferMimeFromFilename(file.name);
+    const effectiveMime =
+      reported && reported !== "application/octet-stream"
+        ? reported
+        : inferred || reported || "application/pdf";
+
+    if (effectiveMime === "application/msword") {
+      return NextResponse.json(
+        { error: "صيغة Word القديمة (.doc) غير مدعومة. احفظ الملف كـ .docx أو PDF ثم أعد الرفع." },
+        { status: 400 },
+      );
+    }
+
+    if (!acceptedTypes.includes(effectiveMime)) {
+      return NextResponse.json(
+        { error: "يُقبل ملفات PDF أو DOCX فقط. إن كان الامتداد صحيحاً ولا يزال يُرفض، جرّب حفظ الملف كـ PDF أو DOCX." },
+        { status: 400 },
+      );
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
     let text: string;
     try {
-      text = await extractTextFromBuffer(buffer, file.type || "application/pdf");
+      text = await extractTextFromBuffer(buffer, effectiveMime, file.name);
     } catch (e) {
       logApiError("engine/analyze/extract", e);
       return NextResponse.json(

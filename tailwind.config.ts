@@ -7,14 +7,14 @@ const config: Config = {
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
+    fontFamily: {
+      sans: ["var(--font-ibm-plex)", "IBM Plex Sans Arabic", "system-ui", "sans-serif"],
+    },
     extend: {
       colors: {
         midnight: "#0F172A",
         charcoal: "#1E293B",
         mist: "#64748B",
-      },
-      fontFamily: {
-        sans: ["var(--font-ibm-plex-sans-arabic)", "system-ui", "sans-serif"],
       },
     },
   },

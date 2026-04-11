@@ -91,11 +91,23 @@ function stripMarkdownCodeFence(raw: string): string {
   return t;
 }
 
-function parseJsonErrorPayload(raw: string): { error?: string; failedSection?: number; partialSections?: string[] } | null {
+function parseJsonErrorPayload(raw: string): {
+  error?: string;
+  code?: string;
+  details?: string;
+  failedSection?: number;
+  partialSections?: string[];
+} | null {
   const cleaned = stripMarkdownCodeFence(raw);
   if (!cleaned) return null;
   try {
-    return JSON.parse(cleaned) as { error?: string; failedSection?: number; partialSections?: string[] };
+    return JSON.parse(cleaned) as {
+      error?: string;
+      code?: string;
+      details?: string;
+      failedSection?: number;
+      partialSections?: string[];
+    };
   } catch {
     return null;
   }
@@ -104,6 +116,9 @@ function parseJsonErrorPayload(raw: string): { error?: string; failedSection?: n
 export default function EnginePage() {
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState<"idle" | "analyze" | "generate" | "build">("idle");
+  const [projectName, setProjectName] = useState("");
+  const [ownerEntity, setOwnerEntity] = useState("");
+  const [executionDuration, setExecutionDuration] = useState("");
   const [rfpText, setRfpText] = useState("");
   const [filename, setFilename] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
@@ -164,18 +179,23 @@ export default function EnginePage() {
   }
 
   async function runGenerate(mode: "fresh" | "resume" = "fresh") {
-    if (!rfpText.trim()) {
-      setNotice({ message: "لا يوجد نص لكراسة الشروط. حمّل ملفاً أولاً.", type: "error" });
-      return;
-    }
     setBusy("generate");
     setNotice(null);
     try {
       const payload: {
-        rfpText: string;
+        projectName: string;
+        ownerEntity: string;
+        executionDuration: string;
+        // Keep legacy key to avoid null/undefined in older handlers.
+        rfpText?: string;
         resumeFromSection?: number;
         previousSections?: string[];
-      } = { rfpText };
+      } = {
+        projectName: projectName.trim(),
+        ownerEntity: ownerEntity.trim(),
+        executionDuration: executionDuration.trim(),
+        rfpText: rfpText.trim() || undefined,
+      };
       if (mode === "resume" && failedSection !== null && partialSections && partialSections.length > 0) {
         payload.resumeFromSection = failedSection;
         payload.previousSections = partialSections;
@@ -188,9 +208,9 @@ export default function EnginePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const raw = await res.text();
 
       if (!res.ok) {
+        const raw = await res.text();
         const parsed = parseJsonErrorPayload(raw);
         const baseMsg =
           (parsed?.error && String(parsed.error).trim()) ||
@@ -210,8 +230,8 @@ export default function EnginePage() {
           setPartialSections(partial);
           setFailedSection(sec);
           const stitched = partial
-            .map((body, i) => `${i + 1})\n\n${body}`)
-            .join("\n\n");
+            .map((body, i) => `${i + 1})\\n\\n${body}`)
+            .join("\\n\\n");
           if (stitched.trim()) setDraft(stitched);
           setNotice({
             message: `${msg} تم حفظ الأقسام المكتملة. يمكنك استئناف التوليد من القسم ${sec + 1}.`,
@@ -223,8 +243,20 @@ export default function EnginePage() {
         return;
       }
 
-      const text = stripMarkdownCodeFence(raw);
-      setDraft(text.trim() || null);
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No reader available");
+      const decoder = new TextDecoder("utf-8");
+      let done = false;
+      let textContent = "";
+      while (!done) {
+        const { value, done: readDone } = await reader.read();
+        done = readDone;
+        if (value) {
+          textContent += decoder.decode(value, { stream: true });
+          setDraft(stripMarkdownCodeFence(textContent).trim() || null);
+        }
+      }
+
       setPartialSections(null);
       setFailedSection(null);
       const header = res.headers.get("x-context-chunks-used");
@@ -253,7 +285,8 @@ export default function EnginePage() {
               ارفع كراسة الشروط (PDF أو DOCX) لتبدأ صياغة عرضك الفني الفائز. يعمل المحرك السيادي لمُدرك
               بمثابة استشاري تقني أول؛ لتوليد مسودة هندسية عالية الكثافة تربط اشتراطات الكراسة بدقة بالغة
               مع سجل إنجازاتك واعتماداتك العالمية الموثقة في الخزنة — قد تستغرق عملية التوليد الاحترافية
-              بضع دقائق لضمان الجودة المتناهية.
+              بضع دقائق لضمان الجودة المتناهية. لأعلى دقة، عيّن الحقول الثلاثة أدناه ثم ارفع الملف ليُمرَّر
+              نص الكراسة كاملاً إلى المحرك مع المسودة.
             </p>
 
             <div
@@ -316,6 +349,39 @@ export default function EnginePage() {
             )}
 
             <div className="mt-8 space-y-3">
+              <label htmlFor="projectName" className="flex items-center gap-2 text-sm font-bold text-charcoal">
+                <FileText size={16} className="text-mist" />
+                اسم المشروع
+              </label>
+              <input
+                id="projectName"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                className="w-full rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-charcoal outline-none transition-all focus:border-midnight/40 focus:ring-4 focus:ring-midnight/5"
+                placeholder="اكتب اسم المشروع"
+              />
+              <label htmlFor="ownerEntity" className="flex items-center gap-2 text-sm font-bold text-charcoal">
+                <FileText size={16} className="text-mist" />
+                الجهة المالكة
+              </label>
+              <input
+                id="ownerEntity"
+                value={ownerEntity}
+                onChange={(e) => setOwnerEntity(e.target.value)}
+                className="w-full rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-charcoal outline-none transition-all focus:border-midnight/40 focus:ring-4 focus:ring-midnight/5"
+                placeholder="اكتب الجهة المالكة"
+              />
+              <label htmlFor="executionDuration" className="flex items-center gap-2 text-sm font-bold text-charcoal">
+                <FileText size={16} className="text-mist" />
+                مدة التنفيذ
+              </label>
+              <input
+                id="executionDuration"
+                value={executionDuration}
+                onChange={(e) => setExecutionDuration(e.target.value)}
+                className="w-full rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-charcoal outline-none transition-all focus:border-midnight/40 focus:ring-4 focus:ring-midnight/5"
+                placeholder="مثال: 18 شهراً"
+              />
               <label htmlFor="rfp" className="flex items-center gap-2 text-sm font-bold text-charcoal">
                 <FileText size={16} className="text-mist" />
                 محتوى الكراسة (المستخرج)
@@ -334,7 +400,7 @@ export default function EnginePage() {
               <button
                 type="button"
                 onClick={() => void runGenerate()}
-                disabled={busy !== "idle" || !rfpText.trim()}
+                disabled={busy !== "idle"}
                 className="flex items-center gap-2 rounded-full bg-midnight px-8 py-4 text-sm font-bold text-white shadow-lg shadow-midnight/20 transition-all hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:translate-y-0 disabled:shadow-none"
               >
                 {busy === "generate" ? (
@@ -348,7 +414,7 @@ export default function EnginePage() {
                 <button
                   type="button"
                   onClick={() => void runGenerate("resume")}
-                  disabled={busy !== "idle" || !rfpText.trim()}
+                  disabled={busy !== "idle"}
                   className="flex items-center gap-2 rounded-full border border-midnight/25 bg-white px-6 py-4 text-sm font-bold text-midnight transition hover:bg-slate-50 disabled:opacity-50"
                 >
                   استئناف من القسم {failedSection + 1}

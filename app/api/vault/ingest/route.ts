@@ -103,9 +103,12 @@ export async function POST(request: Request) {
         ? row.mime.trim()
         : "application/pdf";
 
+    const filenameHint =
+      typeof row.filename === "string" && row.filename.trim() ? row.filename.trim() : undefined;
+
     let text: string;
     try {
-      text = await extractTextFromBuffer(buffer, mime);
+      text = await extractTextFromBuffer(buffer, mime, filenameHint);
     } catch (e) {
       logApiError("vault/ingest/extract", e);
       const internal = e instanceof Error ? e.message : "extract failed";
