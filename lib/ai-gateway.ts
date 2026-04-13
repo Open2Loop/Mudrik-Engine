@@ -1,6 +1,6 @@
 /**
  * @project MUDRIK - AI Tender Consultant
- * Primary: sovereign Ollama Llama 3.1 70B. Cloud (Gemini/OpenAI) only when user settings or fallback require it.
+ * MUDRIK_CORE_OS: تحليل (DeepSeek-R1-class) + صياغة عربية كثيفة (Llama/Qwen-class) عبر Ollama؛ السحابة عند الحاجة.
  */
 
 import type { UserModelSettings } from "@/lib/model-gateway";
@@ -11,75 +11,49 @@ import { completeText } from "@/lib/model-gateway";
  * قفل المصادر: الوثيقتان المعتمدتان فقط هما كراسة الشروط المستخرجة وسجل الخبرات المسترجع في الطلب.
  */
 export const ENGINE_BINDING_FACTS_AR = `قفل المصادر (لا تستند إلى معلومات خارج ما يلي):
-- نص كراسة_شروط_مشروع_المبنى_الذكي.docx كما يُمرَّر في الطلب (المقاطع ~٣٨–٧٨ في الملف المنظم).
-- مقاطع سجل_خبرات_الشركة.docx المسترجعة في الطلب (المقاطع ~١–٣٧ في الملف المنظم).
+- نص كراسة الشروط كما يُمرَّر في طلب التوليد (إن وُجد).
+- مقاطع سجل الخبرات أو الوثائق الداعمة المسترجعة في الطلب (إن وُجدت).
+- الحقول الصريحة في سياق الطلب: اسم المشروع، الجهة المالكة أو الطالبة، مدة التنفيذ.
 
-وقائع ملزمة يجب دمجها في العرض (سرداً، دون تسمية أرقام استشهاد):
-- الجهة الطالبة: وزارة الابتكار التقني.
-- المبنى: خمس طوابق تشغيلية (5 طوابق).
-- إثبات كفاءة: مشروع Modern Tech Complex مع تحقيق توفير طاقة 20٪.
-- المدة الإجمالية للتنفيذ: 18 شهراً.`;
+يُمنع اختلاق أو تثبيت وقائع مشروع ثابتة (جهة، طوابق، مدة، معايير أداء، أسماء مشاريع مرجعية) ما لم ترد صراحة في الكراسة أو السياق أعلاه. ادُمِج المتطلبات كعهود حاكمة دون ذكر أرقام مقاطع في المخرجات.`;
 
 /**
- * Lead consultant prompt — Llama 3.1 70B–class reasoning; /api/engine/generate (local + cloud).
- * الهوية والضوابط المعيارية مدمجة مع قواعد التشغيل الداخلية (مصادر، تكرار، صوت).
+ * بروتوكول نواة مُدرك — الإصدار 7.0 (MUDRIK_CORE_OS: Hybrid + Shadow Workflow).
+ * يُدمج مع قفل المصادر في ENGINE_FULL_SYSTEM_PROMPT_AR؛ المسار الهرمي للمجلد 1 يستخدم نموذج تحليل ثم صياغة (انظر sovereign-volume1-recursive).
  */
-export const ENGINE_ELITE_SYSTEM_PROMPT_AR = `أنت «الخبير الاستراتيجي وصانع العروض الفنية والمالية» وفي الوقت نفسه المحرك الاستشاري لنظام «مُدرك». بصفتك المحرك الاستشاري، يُطبَّق البروتوكول التالي إجبارياً على كافة العروض الفنية والمالية الصادرة منك دون استثناء، لضمان مخرجات تليق بكبار المطورين والمقاولين في المملكة العربية السعودية. دورك صياغة عروض نهائية، دقيقة بنسبة 100٪، خالية من الأخطاء اللغوية أو المطبعية، وموجهة للجهات الحكومية والشركات الكبرى، مع الالتزام بكل ما يلي:
+export const ENGINE_ELITE_SYSTEM_PROMPT_AR = `معرّف البروتوكول: MUDRIK_CORE_OS_v7.0 — إلزامي
 
-1) التوافق المرجعي والمعياري:
-- يجب أن تتوافق صياغة العرض مع نظام المنافسات والمشتريات الحكومية السعودي ولائحته التنفيذية حيث ينطبق ذلك على النص.
-- تلبية متطلبات النشر والتقديم الخاصة بمنصة اعتماد حيث تقتضي المعطيات ذلك.
-- تضمين ما يثبت الالتزام بمتطلبات هيئة المحتوى المحلي والمشتريات الحكومية (مثل نسب السعودة، ودعم المنتجات الوطنية) متى ما تطلبت المعطيات ذلك.
+0) بنية النظام (Hybrid Open-Source — منطق داخلي):
+يُفترض فصل الأدوار على المحرك المحلي عند توفر وسوم متعددة: المنطق الأساسي (التحليل/الامتثال لـ SBC والأكواد) يُناسب نماذج مثل DeepSeek-R1 (بما في ذلك إصدارات كاملة/كبيرة عند توفرها)؛ الصياغة الاحترافية العربية عالية الكثافة تُناسب أقوى النماذج مفتوحة الأوزان المتاحة (مثل فئة Llama 3.1 أو Qwen 2.5 حسب الوسم المثبت). عند استدعاء واحد فقط، نفّذ كلا الدورين داخلياً دون إخراج وسيط.
 
-2) الهندسة اللغوية والسمت المهني:
-- يُمنع منعاً باتاً: الأسلوب الإنشائي البسيط، التكرار اللفظي، أو الوعود العائمة (مثل: سوف نبذل قصارى جهدنا).
-- يُعتمد حصرياً أسلوب «التقرير الاستشاري» (Consultancy Style): لغة التوكيد والربط المنطقي، بأمثلة مثل: «ترتكز منهجيتنا على…»، «سيتم إخضاع كافة التوريدات لمعايير SASO…».
-- التدقيق: تخلو المخرجات من أي خطأ إملائي أو نحوي، مع استخدام علامات الترقيم باحترافية لتسهيل القراءة السريعة (Scannability).
-- لغة عربية فصحى رسمية رصينة (Corporate & Governmental Arabic)، بلا حشو تسويقي؛ اعتمد الأرقام والحقائق والالتزامات الواضحة حيث وردت في المعطيات.
-- لا تُؤلِّف أرقاماً أو تواريخاً أو أسماء غير موجودة في المعطيات. إذا نقصت معلومة جوهرية، ضع [يُرجى إدراج قيمة/تاريخ…] أو — عند الاقتضاء — اقترح خياراً معمارياً وتقنياً مُسماً صراحة «خيار استشاري مقترح لرفع جودة المشروع» دون تقديمه كحقيقة من الكراسة.
+1) مسار الظل (Shadow Process — دفعات داخلية لا تُعرض):
+الدفعة 1 — التحليل الإنشائي: استخراج كل متطلب تقني، وكل إسناد إلى SBC، وكل ما يلزم لمحتوى محلي LCGPA؛ لا تُكمل الصياغة النهائية قبل اكتمال هذه الخريطة ذهنياً.
+الدفعة 2 — التوسيع المحتوي: توليد كل قسم بزيادات لا تقل عن 1500+ كلمة؛ لا تنتقل إلى القسم التالي قبل استيفاء القسم تقنياً (Technical Exhaustiveness).
+الدفعة 3 — وكيل التنقيح (Auditor مخفي): يمسح النص؛ أي فقرة تشبه صياغة آلية عامة، أو تكرر عناوين/عبارات، تُستبعد وتُعاد بصياغة تنفيذية سيادية (Sovereign Executive Prose) داخلياً.
 
-3) المحاور الذهبية الخمسة (هيكل العرض الثابت للعرض الفني):
-ما لم يُطلب هيكل مختلف صراحة، يجب أن يتضمّن كل عرض فني هذه الأجزاء بتفصيل عميق:
-أ- فهم نطاق العمل (Project Insight): تحليل ذكي للأهداف غير المكتوبة صراحة في الكراسة حيث ينطبق (مثل الأثر البيئي، الكفاءة التشغيلية).
-ب- المنهجية التنفيذية (Technical Methodology): شرح «كيفية» التنفيذ باستخدام تقنيات حديثة حيث تناسب المشروع (مثل BIM، AI-Driven Management، Modular Construction) مع ربطها بالمعطيات.
-ج- الامتثال والمعايير (Compliance Matrix): جدول أو مصفوفة نصية واضحة تربط أجزاء المشروع بـ (كود البناء السعودي، معايير وزارة الطاقة، LEED، ISO) بحسب ما ينطبق والمنصوص أو المستنتج من المعطيات.
-د- إدارة الجودة والمخاطر (Risk & Quality): توقّع ثلاث مخاطر جوهرية للمشروع وضع خططاً استباقية للتخفيف منها (Mitigation Plans) مع إبراز إدارة الجودة.
-هـ- الاستدامة والمحتوى المحلي (Sustainability & Local Content): إبراز كيف يخدم المشروع رؤية المملكة 2030 ودعم الصناعة الوطنية ضمن حدود المعطيات.
-- الخطة الزمنية (Timeline) والمراحل (Milestones): ضمّنها ضمن (ب) و/أو كجدول زمني مترابط مع المحاور أعلاه.
-- الهيكل المالي وجداول الكميات (BoQ): فقط إن طُلب صراحة في الطلب أو في المعطيات — بلغة مالية واضحة لا تقبل التأويل.
+2) المعايير اللغوية والتقنية:
+اللغة: فصحى رصينة بمستوى استشاري من الطبقة الأولى. المخرج المقدَّم للجهة الحكومية نص عربي بالكامل في الجمل والفقرات التأسيسية؛ الإنجليزية مسموحة فقط للمصطلح التخصصي بين قوسين مباشرة بعد الصياغة العربية (مثل: نظام إدارة المرافق (IWMS))، دون فقرات أو أقسام كاملة بالإنجليزية.
+حظر ثنائية العناوين المضلِّلة: لا تكرر عنوان المجلد بصيغة إنجليزية منفصلة ثم تعيد المحتوى؛ لا تفتح مقاطع بقوالب مثل «1. Executive Summary» أو «This document provides…».
+صفر آثار آلية: حظر عبارات تلخيص عامة أو تنويه فارغ (مثل In summary، It is worth noting، «في الخلاصة»، «من الجدير بالذكر»، وما شابه). ابدأ المقاطع مباشرة بتصريحات استراتيجية أو تقنية.
+حظر قوالب الوثائق الإنجليزية الشائعة في مخرجات النماذج: This document provides؛ comprehensive overview؛ stakeholders؛ essential guide؛ ambitious endeavor؛ landmark achievement؛ serves as؛ throughout all stages.
+حظر الحشو العربي الفارغ: لا تكرر نفس الجملة أو المقولة النمطية في أكثر من فقرة (مثل إعادة صياغة «تُساهم هذه الأعمال في… بيئة عمل فعالة» دون أرقام أو التزامات أو تفاصيل تقنية جديدة في كل مرة).
+معيار الدقة في كل فقرة: يجب أن تضيف فقرة صالحة واحداً على الأقل مما يلي ولم يُسبق ذكره بنفس المعنى: التزام تعاقدي قابل للتحقق؛ حد كمّي أو مؤشر أداء؛ مرجع تنظيمي سعودي دقيق؛ تفصيل هندسي أو بروتوكولي؛ أو بعد تمويلي/تكلفة/جدولة مرتبط بالعرض.
+الدقة التنظيمية: SASO هي الهيئة السعودية للمواصفات والمقاييس والجودة — لا تُسِمَّ جهة بيئية أجنبية أو تخلط الأدوار ما لم ينصّ عليه نص الكراسة صراحة. ISO 45001 يخص إدارة الصحة والسلامة المهنية وليس بديلاً عن اشتراطات أنظمة الإطفاء والإنذار في SBC/SASO عند انطباقها.
+قاعدة الصفحات الثلاثين: وسّع عبر «التفكيك التقني» — لا تذكر نظاماً باسمه فقط؛ فصّل البنية، والبروتوكولات، والتوصيل، وSLA الصيانة حيث ينطبق.
+الامتثال: ادمج إسناداً صريحاً أو ضمنياً إلى SBC 201 وSBC 801 وSASO ورؤية المملكة 2030 ومنصة اعتماد (Etimad) في نسيج النص لا كذكر سطحي.
 
-4) معالجة البيانات والذكاء الإجرائي:
-- الربط المرجعي: عند تزويدك بمقاطع من كراسة الشروط (مثل نطاق المقاطع 38–78 في الملف المنظم)، يجب أن يظهر في العرض التزام صريح بتلك البنود دون ذكر أرقام مقاطع أو أسماء ملفات في النص النهائي — عبر جمل التزام تُعزّز الثقة.
-- سد الفجوات: لا تتجاهل النواقص؛ إن لم تُذكر في المعطيات، قدّم أفضل ممارسة معمارية وتقنية مُعلَمة «خيار استشاري مقترح لرفع جودة المشروع»، أو [يُرجى إدراج…] إن كان الإغفال يُخلّ بالامتثال.
+3) التعقيم والمخرجات (Clean Text Only):
+حظر Markdown بالكامل (* # ** …). الترقيم الهرمي النظيف فقط: 1.0، 1.1، 1.1.1، 1.1.1.1 عند الحاجة.
+النص جاهز للطباعة والتقديم الحكومي بمستوى قانوني/فني رصين.
 
-5) التعليمات النهائية قبل الإصدار:
-- راجع النص داخلياً: هل هو مقنع لمسؤول حكومي؟ هل هو دقيق للمهندس الفني؟ هل هو مطمئن للمدير المالي؟ إذا كانت الإجابة لا، أعد الصياغة فوراً قبل العرض (دون إخراج هذه الأسئلة أو خطوات المراجعة للمستخدم).
-- المخرجات «نسخة نهائية» جاهزة للطباعة والاعتماد قدر الإمكان، مع ترابط منطقي بين العرض الفني وأي تكلفة مالية.
+4) معاملات التنفيذ (مرجعية — يطبّقها الخادم على Ollama):
+وضع الدقة: Temperature ≈ 0.1؛ عقوبة التردد Frequency Penalty ≈ 1.0 (صفر تكرار مكروبن)؛ عقوبة الحضور Presence Penalty ≈ 0.8 (استمرار ابتكار تفاصيل جديدة).
 
-— قواعد تشغيل مُدرك (إلزامية مع ما سبق):
+5) أرضية الإخفاق:
+أي مجلد رئيس لا يبلغ 3000 كلمة من النص الفني الصِرف العربي الكثيف يُعدّ مخالفاً للبروتوكول — وسّع المنهجية حتى البلوغ أو أعد الصياغة داخلياً. إن خالف المخرج اللغة العربية للنص الأساسي أو انزلق إلى قالب إنجليزي عام، فالمخالفة أشد من نقص العدد.
 
-استدلال متقاطع (إلزامي قبل الصياغة — داخلياً؛ لا تخرج خطوات تفكير):
-- لكل اشتراط جوهري من كراسة الشروط (النطاق المكافئ للاستشهادات ٣٨–٧٨ في الملف المنظم، مقابل النص والمقاطع المدخَلة): اربطه صراحة بما يثبته سجل الشركة من اعتمادات ISO (9001، 45001، وأي ISO وردت في السياق) وبسجل الأداء في كفاءة الطاقة بما في ذلك إنجازات من نوع Modern Tech Complex وتوفير طاقة 20٪ (النطاق المكافئ للاستشهادات ٥–١٨ في سجل الخبرات المسترجع).
-- لا تذكر أرقام الاستشهاد أو أسماء ملفات في النص النهائي؛ اجعل الربط في جمل التزام ووقائع فقط.
-
-سياسة صفر أسلوب ذكاء اصطناعي (Zero-AI-Style):
-- فصحى مهنية ثقيلة، جمل مركّبة، حسم وتقطيع — كصياغة مكتب محاماة/استشارات عالمي.
-- ممنوع: Moreover، Furthermore، باختصار، من الجدير بالذكر، يسعدنا، نفخر، وبناءً عليه كحشو، أو أي نبرة تعليمية أو تلخيصية.
-
-الكثافة الوثائقية (هدف إخراجي):
-- اكتب فقرات طويلة ومتعددة لكل قسم؛ وسّع التفصيل التقني (مواصفات، تسلسل، مسؤوليات، واجهات، معايير قبول) بحيث يسهل توسيع المخرجات إلى وثيقة مطبوعة ضخمة (استهدف مجمل العرض ما يعادل ثلاثين صفحة أو أكثر عند الدمج مع الأقسام الأخرى — عبر العمق لا بالحشو).
-- المنهجية التنفيذية: خطوات معمارية وتنفيذية متتابعة (حفر، أساسات، هيكل، تكامل MEP، BMS، اختبارات FAT/SAT، تسليم) بمصطلحات من مقاطع الملفات [١–٧٨] حيث تنطبق على المشروع.
-
-قفل منع التكرار بين الأقسام:
-- سيُرفق ما سبق توليده. ممنوع تكرار خمس كلمات متتالية أو أكثر من ذلك النص.
-
-صوت الفاعل:
-- «تلتزم شركة مقاولات وطنية…»، «نطبّق…»، «سنستخدم…». ممنوع «يجب على المقاول»، «يرجى تقديم».
-
-صفر تسريب تعليمات:
-- الحرف الأول = أول حرف من الوثيقة. ممنوع عبارات توجيه داخلية في المخرجات.
-
-ممنوع: [RELEVANT_DATA]؛ تكرار عنوان القسم؛ * # ---.`;
+6) سلسلة التفكير — داخلي فقط:
+لا تُخرج الموجهات ولا مسار الظل؛ المخرج النهائي المصقول فقط.`;
 
 /** Locked system message for /api/engine/generate — لا يُستبدل من العميل. */
 export const ENGINE_FULL_SYSTEM_PROMPT_AR = `${ENGINE_BINDING_FACTS_AR}\n\n${ENGINE_ELITE_SYSTEM_PROMPT_AR}`;
@@ -125,21 +99,71 @@ export function getLocalOllamaBaseUrl(): string {
   return (fromEnv || "http://127.0.0.1:11434").replace(/\/$/, "");
 }
 
-/** Default Ollama image: Llama 3.1 70B lead consultant (override LOCAL_OLLAMA_MODEL). */
-export function getLocalOllamaModel(): string {
-  return (
-    process.env.LOCAL_OLLAMA_MODEL?.trim() ||
-    process.env.OLLAMA_MODEL?.trim() ||
-    "llama3.1:70b"
-  );
+/**
+ * نموذج التحليل/الامتثال (SBC، متطلبات تقنية) — يُفضّل DeepSeek-R1-class عند التثبيت.
+ * إذا وُجد LOCAL_OLLAMA_MODEL فقط، يُستخدم لكل المسارات (وضع نموذج واحد).
+ */
+export function getSovereignAnalysisModel(): string {
+  const split = process.env.LOCAL_OLLAMA_MODEL_ANALYSIS?.trim();
+  if (split) return split;
+  const legacy = process.env.LOCAL_OLLAMA_MODEL?.trim() || process.env.OLLAMA_MODEL?.trim();
+  if (legacy) return legacy;
+  return "deepseek-r1:latest";
 }
 
-/** Max tokens per Ollama completion (higher for 70B long-form sections). */
+/**
+ * نموذج الصياغة العربية عالية الكثافة — يُفضّل Llama 3.1 / Qwen 2.5-class عند التثبيت.
+ */
+export function getSovereignSynthesisModel(): string {
+  const split = process.env.LOCAL_OLLAMA_MODEL_SYNTHESIS?.trim();
+  if (split) return split;
+  const legacy = process.env.LOCAL_OLLAMA_MODEL?.trim() || process.env.OLLAMA_MODEL?.trim();
+  if (legacy) return legacy;
+  return "llama3.1:70b";
+}
+
+/** Alias: المسودات والبث تستخدم نموذج الصياغة الافتراضي. */
+export function getLocalOllamaModel(): string {
+  return getSovereignSynthesisModel();
+}
+
+/** Max tokens per Ollama completion — default raised for sovereign CoT-expanded long-form (30+ page equivalent across volumes). */
 export function getLocalOllamaNumPredict(): number {
   const raw = process.env.LOCAL_OLLAMA_NUM_PREDICT?.trim();
   const n = raw ? Number(raw) : NaN;
   if (Number.isFinite(n) && n >= 256) return Math.min(Math.floor(n), 32768);
-  return 16384;
+  return 24576;
+}
+
+function parseSovereignFloatEnv(key: string, fallback: number): number {
+  const raw = process.env[key]?.trim();
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * «الأعصاب التقنية» لمحرك العروض السيادية — مضبوطة لدقة قانونية/هندسية عالية وتقليل الهذيان والتكرار.
+ * يمكن تجاوزها عبر متغيرات البيئة: SOVEREIGN_OLLAMA_TEMPERATURE، SOVEREIGN_OLLAMA_TOP_P،
+ * SOVEREIGN_OLLAMA_FREQUENCY_PENALTY، SOVEREIGN_OLLAMA_PRESENCE_PENALTY، SOVEREIGN_OLLAMA_TOP_K، SOVEREIGN_OLLAMA_REPEAT_PENALTY.
+ */
+export function getSovereignOllamaGenOptions(): {
+  temperature: number;
+  top_p: number;
+  top_k: number;
+  repeat_penalty: number;
+  frequency_penalty: number;
+  presence_penalty: number;
+  num_predict: number;
+} {
+  return {
+    temperature: parseSovereignFloatEnv("SOVEREIGN_OLLAMA_TEMPERATURE", 0.1),
+    top_p: parseSovereignFloatEnv("SOVEREIGN_OLLAMA_TOP_P", 0.85),
+    top_k: Math.max(1, Math.floor(parseSovereignFloatEnv("SOVEREIGN_OLLAMA_TOP_K", 30))),
+    repeat_penalty: parseSovereignFloatEnv("SOVEREIGN_OLLAMA_REPEAT_PENALTY", 1.05),
+    frequency_penalty: parseSovereignFloatEnv("SOVEREIGN_OLLAMA_FREQUENCY_PENALTY", 1.0),
+    presence_penalty: parseSovereignFloatEnv("SOVEREIGN_OLLAMA_PRESENCE_PENALTY", 0.8),
+    num_predict: getLocalOllamaNumPredict(),
+  };
 }
 
 /** Per-request Ollama HTTP timeout (ms) — 70B needs headroom. */
@@ -188,13 +212,17 @@ function classifyGatewayFailure(error: unknown): GatewayError {
   ) {
     return new GatewayError("CONNECTION_REFUSED", msg);
   }
+  const looksLikeModelRuntimeFailure =
+    /(load|run|pull|unload|runner|gguf|kv\s*cache|vram|gpu).*model|\bmodel\b.*(load|crash|fail|error|runner)/i.test(
+      msg,
+    );
   if (
     lower.includes("500") ||
     lower.includes("503") ||
     lower.includes("panic") ||
     lower.includes("cuda") ||
     lower.includes("out of memory") ||
-    lower.includes("model")
+    looksLikeModelRuntimeFailure
   ) {
     return new GatewayError("MODEL_CRASH", msg);
   }
@@ -213,7 +241,15 @@ function withAbortTimeout(timeoutMs: number): AbortSignal {
 type OllamaPayload = {
   model: string;
   stream: false;
-  options: { temperature: number; top_p: number; num_predict: number };
+  options: {
+    temperature: number;
+    top_p: number;
+    num_predict: number;
+    top_k?: number;
+    repeat_penalty?: number;
+    frequency_penalty?: number;
+    presence_penalty?: number;
+  };
   messages?: Array<{ role: "system" | "user"; content: string }>;
   prompt?: string;
   system?: string;
@@ -251,6 +287,41 @@ function isOllamaModelNotFoundError(error: unknown): boolean {
   return error.status === 404 || looksLikeModelMissing;
 }
 
+/** Cache لتقليل /api/tags عند توليد عدة مجلدات (نفس العملية). */
+const INSTALLED_TAGS_TTL_MS = 60_000;
+let installedTagsCache: { baseUrl: string; names: string[]; at: number } | null = null;
+
+async function getCachedOllamaInstalledModels(baseUrl: string): Promise<string[]> {
+  const normalized = baseUrl.replace(/\/$/, "");
+  const now = Date.now();
+  if (
+    installedTagsCache &&
+    installedTagsCache.baseUrl === normalized &&
+    now - installedTagsCache.at < INSTALLED_TAGS_TTL_MS
+  ) {
+    return installedTagsCache.names;
+  }
+  const names = await listOllamaInstalledModels(normalized);
+  installedTagsCache = { baseUrl: normalized, names, at: now };
+  return names;
+}
+
+/**
+ * يحوّل الوسم المطلوب إلى وسم مثبت فعلياً قبل أي طلب توليد — يتجنّب فشل /api/chat و/api/generate المتتالي بـ 404
+ * (أدلة الطرفية: llama3.1:70b غير مثبت ثم تكرار نفس المحاولة لكل مجلد).
+ */
+async function resolveOllamaModelTag(preferred: string): Promise<string> {
+  const p = preferred.trim();
+  if (!p) return p;
+  const base = getLocalOllamaBaseUrl();
+  const installed = await getCachedOllamaInstalledModels(base);
+  const exact = installed.find((n) => n.toLowerCase() === p.toLowerCase());
+  if (exact) return exact;
+  const fallback = pickInstalledOllamaModel(installed, p);
+  if (fallback) return fallback;
+  return p;
+}
+
 /** Lists locally installed Ollama model names (tags). */
 async function listOllamaInstalledModels(baseUrl: string): Promise<string[]> {
   const normalized = baseUrl.replace(/\/$/, "");
@@ -285,15 +356,32 @@ async function listOllamaInstalledModels(baseUrl: string): Promise<string[]> {
   }
 }
 
-/** Picks a usable tag when the preferred model is missing. */
+/** يستخرج رقم الحجم بالمليارات من وسم النموذج (مثل 70 من 70b) لترجيح الأكبر. */
+function ollamaTagBillionsScore(name: string): number {
+  const m = name.match(/(\d+)\s*b\b/i);
+  return m ? parseInt(m[1]!, 10) : 0;
+}
+
+/** Picks a usable tag when the preferred model is missing (يفضّل deepseek-r1 الأكبر ثم أي مطابقة). */
 function pickInstalledOllamaModel(installed: string[], preferred: string): string | null {
   if (installed.length === 0) return null;
   const p = preferred.trim().toLowerCase();
   const exact = installed.find((n) => n.toLowerCase() === p);
   if (exact) return exact;
   const base = preferred.includes(":") ? preferred.split(":")[0]!.trim().toLowerCase() : p;
-  const prefix = installed.find((n) => n.toLowerCase().startsWith(`${base}:`) || n.toLowerCase() === base);
-  if (prefix) return prefix;
+  const prefixMatches = installed.filter(
+    (n) => n.toLowerCase().startsWith(`${base}:`) || n.toLowerCase() === base,
+  );
+  if (prefixMatches.length > 0) {
+    if (/deepseek-r1/i.test(base)) {
+      return [...prefixMatches].sort((a, b) => ollamaTagBillionsScore(b) - ollamaTagBillionsScore(a))[0]!;
+    }
+    return prefixMatches[0]!;
+  }
+  const deepseekR1 = installed.filter((n) => /deepseek-r1/i.test(n));
+  if (deepseekR1.length > 0) {
+    return [...deepseekR1].sort((a, b) => ollamaTagBillionsScore(b) - ollamaTagBillionsScore(a))[0]!;
+  }
   const llama = installed.find((n) => /llama/i.test(n));
   if (llama) return llama;
   return installed[0] ?? null;
@@ -355,10 +443,10 @@ async function ollamaChat(
   userPrompt: string
 ): Promise<string> {
   const normalizedBase = baseUrl.replace(/\/$/, "");
-  const numPredict = getLocalOllamaNumPredict();
+  const genOpts = getSovereignOllamaGenOptions();
   const timeoutMs = getLocalOllamaTimeoutMs();
   console.info(
-    `[ai-gateway] sovereign:init base_url=${normalizedBase} model=${model} timeout_ms=${timeoutMs} endpoints=${OLLAMA_ENDPOINTS.join(",")}`
+    `[ai-gateway] sovereign:init base_url=${normalizedBase} model=${model} timeout_ms=${timeoutMs} num_predict=${genOpts.num_predict} endpoints=${OLLAMA_ENDPOINTS.join(",")}`
   );
 
   const payloadChat: OllamaPayload = {
@@ -368,20 +456,23 @@ async function ollamaChat(
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
-    options: { temperature: 0.28, top_p: 0.92, num_predict: numPredict },
+    options: genOpts,
   };
   const payloadGenerate: OllamaPayload = {
     model,
     stream: false,
     system: systemPrompt,
     prompt: userPrompt,
-    options: { temperature: 0.28, top_p: 0.92, num_predict: numPredict },
+    options: genOpts,
   };
 
   try {
     return await callOllamaEndpoint(normalizedBase, "/api/chat", payloadChat, timeoutMs);
   } catch (firstError) {
-    const first = classifyGatewayFailure(firstError);
+    const first = firstError instanceof GatewayError ? firstError : classifyGatewayFailure(firstError);
+    if (first.code === "MODEL_NOT_FOUND") {
+      throw first;
+    }
     console.warn(
       `[ai-gateway] endpoint-fallback from=/api/chat to=/api/generate reason=${first.code}`,
       first.details ?? first.message
@@ -389,7 +480,7 @@ async function ollamaChat(
     try {
       return await callOllamaEndpoint(normalizedBase, "/api/generate", payloadGenerate, timeoutMs);
     } catch (secondError) {
-      const second = classifyGatewayFailure(secondError);
+      const second = secondError instanceof GatewayError ? secondError : classifyGatewayFailure(secondError);
       console.error(
         `[ai-gateway] endpoint-fallback-failed from=/api/chat to=/api/generate code=${second.code}`,
         second.details ?? second.message
@@ -402,19 +493,25 @@ async function ollamaChat(
 /** Direct sovereign call for API routes that must stay local-only. */
 export async function generateSovereignText(
   systemPrompt: string,
-  userPrompt: string
+  userPrompt: string,
+  preferredModel?: string,
 ): Promise<string> {
   const base = getLocalOllamaBaseUrl();
-  const preferred = getLocalOllamaModel();
+  const preferred = (preferredModel?.trim() || getSovereignSynthesisModel()).trim();
+  const resolved = await resolveOllamaModelTag(preferred);
+  if (resolved !== preferred) {
+    console.warn(`[ai-gateway] model pre-resolve "${preferred}" -> "${resolved}"`);
+  }
   try {
-    return await ollamaChat(base, preferred, systemPrompt, userPrompt);
+    return await ollamaChat(base, resolved, systemPrompt, userPrompt);
   } catch (first) {
     if (!isOllamaModelNotFoundError(first)) {
       throw first instanceof Error ? first : new Error(String(first));
     }
+    installedTagsCache = null;
     const installed = await listOllamaInstalledModels(base);
     const fallback = pickInstalledOllamaModel(installed, preferred);
-    if (!fallback || fallback === preferred) {
+    if (!fallback || fallback === resolved) {
       throw new GatewayError(
         "MODEL_NOT_FOUND",
         `النموذج المطلوب غير موجود على المحرك المحلي: "${preferred}". نماذج مثبتة: ${installed.length ? installed.join(", ") : "(لا يوجد — نفّذ ollama pull)"}.`,
@@ -422,7 +519,7 @@ export async function generateSovereignText(
         first instanceof GatewayError ? first.details : String(first),
       );
     }
-    console.warn(`[ai-gateway] model fallback preferred="${preferred}" -> using="${fallback}"`);
+    console.warn(`[ai-gateway] model fallback after failed resolved="${resolved}" -> "${fallback}"`);
     return ollamaChat(base, fallback, systemPrompt, userPrompt);
   }
 }
@@ -433,7 +530,11 @@ export async function generateSovereignStream(
 ): Promise<ReadableStream> {
   const base = getLocalOllamaBaseUrl().replace(/\/$/, "");
   const preferred = getLocalOllamaModel();
-  const numPredict = getLocalOllamaNumPredict();
+  const resolved = await resolveOllamaModelTag(preferred);
+  if (resolved !== preferred) {
+    console.warn(`[ai-gateway] stream model pre-resolve "${preferred}" -> "${resolved}"`);
+  }
+  const genOpts = getSovereignOllamaGenOptions();
   const timeoutMs = getLocalOllamaTimeoutMs();
 
   async function tryStream(modelName: string): Promise<Response> {
@@ -445,7 +546,7 @@ export async function generateSovereignStream(
         stream: true,
         system: systemPrompt,
         prompt: userPrompt,
-        options: { temperature: 0.28, top_p: 0.92, num_predict: numPredict },
+        options: genOpts,
       }),
       signal: withAbortTimeout(timeoutMs),
       cache: "no-store",
@@ -454,12 +555,13 @@ export async function generateSovereignStream(
 
   let res: Response;
   try {
-    res = await tryStream(preferred);
+    res = await tryStream(resolved);
     if (!res.ok && res.status === 404) {
+      installedTagsCache = null;
       const installed = await listOllamaInstalledModels(base);
-      const fallback = pickInstalledOllamaModel(installed, preferred);
-      if (fallback && fallback !== preferred) {
-        res = await tryStream(fallback);
+      const alt = pickInstalledOllamaModel(installed, preferred);
+      if (alt && alt !== resolved) {
+        res = await tryStream(alt);
       } else {
         throw new GatewayError("MODEL_NOT_FOUND", "النموذج غير موجود");
       }
@@ -513,7 +615,7 @@ export async function generateSovereignStream(
 }
 
 /**
- * Routes generation: sovereign → Ollama (Llama 3.1 / LOCAL_OLLAMA_MODEL) at LOCAL_OLLAMA_URL, else cloud.
+ * Routes generation: sovereign → Ollama (صياغة: LOCAL_OLLAMA_MODEL_SYNTHESIS / الافتراضي) at LOCAL_OLLAMA_URL, else cloud.
  * Optional auto-fallback to cloud if local is down (SOVEREIGN_AUTO_CLOUD_FALLBACK !== "false").
  */
 export async function completeGeneration(

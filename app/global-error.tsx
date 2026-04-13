@@ -11,7 +11,7 @@ export default function GlobalError({
 }) {
   return (
     <html lang="ar" dir="rtl">
-      <body className="min-h-screen bg-white text-charcoal antialiased font-sans">
+      <body className="absolute min-h-screen bg-white text-charcoal antialiased font-sans">
         <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center px-6">
           <div className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="flex items-start gap-4">

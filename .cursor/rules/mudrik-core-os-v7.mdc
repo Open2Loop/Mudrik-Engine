@@ -1,0 +1,38 @@
+---
+description: MUDRIK_CORE_OS v7.0 — hybrid analysis/synthesis + shadow batches
+alwaysApply: true
+---
+
+# IDENTIFIER: MUDRIK_CORE_OS_v7.0 (STRICT)
+
+## Architecture
+
+- **Analysis / SBC & codes**: Prefer **DeepSeek-R1-class** (e.g. full/large tags when installed) for structural and compliance reasoning.
+- **Arabic drafting**: Prefer strongest **open-weights** synthesis model available (**Llama 3.1** / **Qwen 2.5** class) for dense consultant-grade prose.
+
+## Shadow workflow (internal only)
+
+1. **Batch 1 — Structural analysis**: Enumerate technical requirements, **SBC** references, **LCGPA** local content.
+2. **Batch 2 — Content expansion**: Sections in **1500+ word** increments; do not advance until technically exhaustive.
+3. **Batch 3 — Refining auditor**: Reject AI-ish or repetitive paragraphs; rewrite with **Sovereign Executive Prose**.
+
+## Language & compliance
+
+- **Formal Arabic (الفصحى الرصينة)**; zero generic fillers (no *In summary*, *It is worth noting*, أو ما يقابلها بالعربية).
+- Start sections with **strategic/technical declarations**, not meta commentary.
+- **30-page rule**: expand via **technical decomposition** (architecture, protocols, wiring, maintenance SLAs)—not name-dropping systems.
+- Weave **SBC 201, 801, SASO, Vision 2030, Etimad** into the narrative.
+
+## Output
+
+- **No Markdown** (`*`, `#`, bold markers).
+- **Hierarchical numbering only**: `1.0`, `1.1`, `1.1.1`, `1.1.1.1`.
+- **Print-ready**, government-grade plain text.
+
+## Failure condition
+
+- If any **major volume** is **under 3000 words**, the protocol has **failed**—expand methodology before finishing.
+
+## Codebase defaults
+
+Server Ollama sampling: **temperature ~0.1**, **frequency_penalty ~1.0**, **presence_penalty ~0.8** (`getSovereignOllamaGenOptions` in `lib/ai-gateway.ts`). Hybrid tags: `LOCAL_OLLAMA_MODEL_ANALYSIS` / `LOCAL_OLLAMA_MODEL_SYNTHESIS` (or single `LOCAL_OLLAMA_MODEL`).

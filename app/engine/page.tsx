@@ -13,11 +13,10 @@
 "use client";
 
 /**
- * Engine UI: POST /api/engine/generate.
- * System prompt locked in ENGINE_FULL_SYSTEM_PROMPT_AR; sources: كراسة_شروط + سجل_خبرات chunks only.
+ * Engine UI: POST /api/engine/generate — توليد تتابعي للمجلدات الفنية + تعقيم نصي.
  */
 
-import { Fragment, useState, type ReactNode } from "react";
+import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import {
   FileSearch,
@@ -28,59 +27,12 @@ import {
   Wand2,
   Copy,
   Check,
+  Download,
 } from "lucide-react";
 
-/** Renders **bold** as <strong>; strips remaining stray * pairs for a clean formal look. */
-function renderDraftRichText(text: string): ReactNode {
-  const lines = text.split("\n");
-  return lines.map((line, lineIdx) => (
-    <Fragment key={lineIdx}>
-      {lineIdx > 0 ? <br /> : null}
-      {renderLineWithBold(line)}
-    </Fragment>
-  ));
-}
-
-function renderLineWithBold(line: string): ReactNode {
-  const nodes: ReactNode[] = [];
-  const re = /\*\*([^*]+)\*\*/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let key = 0;
-  while ((m = re.exec(line)) !== null) {
-    if (m.index > last) {
-      nodes.push(
-        <Fragment key={`t-${key++}`}>{stripLoneAsteriskEmphasis(line.slice(last, m.index))}</Fragment>
-      );
-    }
-    nodes.push(
-      <strong key={`b-${key++}`} className="font-semibold text-white">
-        {m[1]}
-      </strong>
-    );
-    last = m.index + m[0].length;
-  }
-  if (last < line.length) {
-    nodes.push(
-      <Fragment key={`t-${key++}`}>{stripLoneAsteriskEmphasis(line.slice(last))}</Fragment>
-    );
-  }
-  return nodes.length > 0 ? nodes : stripLoneAsteriskEmphasis(line);
-}
-
-function stripLoneAsteriskEmphasis(segment: string): ReactNode {
-  const parts = segment.split(/(\*[^*\n]+\*)/g);
-  if (parts.length === 1) return segment.replace(/\*/g, "");
-  return parts.map((part, i) => {
-    const single = part.match(/^\*([^*\n]+)\*$/);
-    if (single) return single[1];
-    return part.replace(/\*/g, "");
-  });
-}
-
-/** Plain text for Word/paste: no markdown asterisks or heading hashes. */
+/** Plain text for Word/paste — المخرجات مُعقّمة من الخادم؛ إزالة أي بقايا شكلية. */
 function stripMarkdownForClipboard(text: string): string {
-  return text.replace(/[*#]/g, "");
+  return text.replace(/[*#`]/g, "").replace(/\r\n/g, "\n");
 }
 
 /** Strips ```json ... ``` or ``` ... ``` wrappers so JSON.parse / display succeeds. */
@@ -113,6 +65,14 @@ function parseJsonErrorPayload(raw: string): {
   }
 }
 
+/** Appends login hint when the API rejected the request as unauthenticated. */
+function withAuthHint(res: Response, parsed: ReturnType<typeof parseJsonErrorPayload>, baseMsg: string): string {
+  if (res.status === 401 || parsed?.code === "UNAUTHORIZED") {
+    return `${baseMsg} إن لم تكن مسجّلاً للدخول، افتح صفحة تسجيل الدخول ثم أعد المحاولة.`;
+  }
+  return baseMsg;
+}
+
 export default function EnginePage() {
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState<"idle" | "analyze" | "generate" | "build">("idle");
@@ -127,6 +87,7 @@ export default function EnginePage() {
   const [notice, setNotice] = useState<{ message: string; type: "error" | "info" } | null>(null);
   const [chunks, setChunks] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [exportingDocx, setExportingDocx] = useState(false);
 
   async function copyDraftToClipboard() {
     if (!draft?.trim()) return;
@@ -136,6 +97,59 @@ export default function EnginePage() {
       window.setTimeout(() => setCopied(false), 2200);
     } catch {
       setNotice({ message: "تعذر النسخ. تحقق من أذونات المتصفح.", type: "error" });
+    }
+  }
+
+  async function exportDraftAsDocx() {
+    if (!draft?.trim() || exportingDocx) return;
+    setExportingDocx(true);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/engine/export-docx", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: projectName.trim() || "عرض فني — مُدرك",
+          body: draft,
+        }),
+      });
+      if (!res.ok) {
+        const raw = await res.text();
+        let msg = "تعذر تصدير ملف Word.";
+        try {
+          const j = JSON.parse(raw) as { error?: string };
+          if (j?.error && String(j.error).trim()) msg = String(j.error).trim();
+        } catch {
+          if (raw.trim()) msg = raw.trim().slice(0, 400);
+        }
+        setNotice({ message: msg, type: "error" });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const dispo = res.headers.get("Content-Disposition");
+      let downloadName = `mudrik-proposal-${Date.now()}.docx`;
+      const m = dispo?.match(/filename\*=UTF-8''([^;\n]+)/i);
+      if (m?.[1]) {
+        try {
+          downloadName = decodeURIComponent(m[1]);
+        } catch {
+          /* keep default */
+        }
+      }
+      a.download = downloadName;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setNotice({ message: "تعذر تنزيل الملف. تحقق من الشبكة وأعد المحاولة.", type: "error" });
+    } finally {
+      setExportingDocx(false);
     }
   }
 
@@ -150,14 +164,18 @@ export default function EnginePage() {
     try {
       const fd = new FormData();
       fd.set("rfp", file);
-      const res = await fetch("/api/engine/analyze", { method: "POST", body: fd });
+      const res = await fetch("/api/engine/analyze", {
+        method: "POST",
+        credentials: "same-origin",
+        body: fd,
+      });
       const raw = await res.text();
       if (!res.ok) {
         const parsed = parseJsonErrorPayload(raw);
         const msg =
           (parsed?.error && String(parsed.error).trim()) ||
           (raw.trim() ? raw.trim().slice(0, 500) : "تعذر تحليل الملف.");
-        setNotice({ message: msg, type: "error" });
+        setNotice({ message: withAuthHint(res, parsed, msg), type: "error" });
         return;
       }
       let data: { text?: string; filename?: string };
@@ -205,6 +223,7 @@ export default function EnginePage() {
       }
       const res = await fetch("/api/engine/generate", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -218,7 +237,7 @@ export default function EnginePage() {
         const timeoutLike = /timeout|مهلة|AbortError|TimeoutError/i.test(baseMsg);
         const msg = timeoutLike
           ? "انتهت مهلة التوليد لهذا الطلب. قلّل حجم النص أو أعد المحاولة بعد لحظات."
-          : baseMsg;
+          : withAuthHint(res, parsed, baseMsg);
         if (
           parsed &&
           Number.isInteger(parsed.failedSection) &&
@@ -243,24 +262,13 @@ export default function EnginePage() {
         return;
       }
 
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No reader available");
-      const decoder = new TextDecoder("utf-8");
-      let done = false;
-      let textContent = "";
-      while (!done) {
-        const { value, done: readDone } = await reader.read();
-        done = readDone;
-        if (value) {
-          textContent += decoder.decode(value, { stream: true });
-          setDraft(stripMarkdownCodeFence(textContent).trim() || null);
-        }
-      }
+      const textContent = stripMarkdownCodeFence(await res.text()).trim();
+      setDraft(textContent || null);
 
       setPartialSections(null);
       setFailedSection(null);
-      const header = res.headers.get("x-context-chunks-used");
-      const used = header ? Number(header) : null;
+      const volHeader = res.headers.get("x-sovereign-volumes");
+      const used = volHeader ? Number(volHeader) : null;
       setChunks(Number.isFinite(used) ? used : null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
@@ -424,7 +432,7 @@ export default function EnginePage() {
             {busy === "generate" && (
               <div className="mt-4 flex items-center gap-3 rounded-2xl bg-blue-50 px-5 py-3 border border-blue-100">
                 <Loader2 size={16} className="animate-spin text-blue-700" />
-                <span className="text-sm font-semibold text-blue-700">Processing Deep Analysis...</span>
+                <span className="text-sm font-semibold text-blue-700">جارٍ التوليد التتابعي للمجلدات الفنية…</span>
               </div>
             )}
 
@@ -463,34 +471,55 @@ export default function EnginePage() {
             ) : draft ? (
               <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
                 <div className="relative rounded-2xl border border-white/10 bg-white/5 px-5 pb-6 pt-14">
-                  <button
-                    type="button"
-                    onClick={() => void copyDraftToClipboard()}
-                    className="absolute left-4 top-4 z-10 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-white shadow-sm backdrop-blur-sm transition hover:bg-white/15 active:scale-[0.98]"
-                  >
-                    {copied ? (
-                      <>
-                        <Check size={16} className="text-emerald-300" aria-hidden />
-                        تم النسخ
-                      </>
-                    ) : (
-                      <>
-                        <Copy size={16} aria-hidden />
-                        نسخ
-                      </>
-                    )}
-                  </button>
+                  <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void copyDraftToClipboard()}
+                      disabled={busy !== "idle"}
+                      className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-white shadow-sm backdrop-blur-sm transition hover:bg-white/15 active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {copied ? (
+                        <>
+                          <Check size={16} className="text-emerald-300" aria-hidden />
+                          تم النسخ
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={16} aria-hidden />
+                          نسخ
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void exportDraftAsDocx()}
+                      disabled={busy !== "idle" || exportingDocx}
+                      className="inline-flex items-center gap-2 rounded-full border border-amber-400/35 bg-amber-500/15 px-4 py-2 text-xs font-semibold text-amber-100 shadow-sm backdrop-blur-sm transition hover:bg-amber-500/25 active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {exportingDocx ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" aria-hidden />
+                          جارٍ التصدير…
+                        </>
+                      ) : (
+                        <>
+                          <Download size={16} aria-hidden />
+                          تصدير Word
+                        </>
+                      )}
+                    </button>
+                  </div>
                   <div
                     dir="rtl"
-                    className="font-sans text-[15px] font-normal leading-relaxed text-slate-100 antialiased whitespace-pre-wrap"
+                    className="font-sans text-[15px] font-normal leading-relaxed text-slate-100 antialiased whitespace-pre-wrap break-words"
                   >
-                    {renderDraftRichText(draft)}
+                    {draft}
                   </div>
                 </div>
                 {typeof chunks === "number" && (
                   <div className="pt-2 border-t border-white/10 flex items-center justify-between">
-                    <span className="text-xs text-white/40 font-medium">المصادر المستخدمة من الخزنة</span>
-                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white">{chunks} مقاطع</span>
+                    <span className="text-xs text-white/40 font-medium">المجلدات الفنية المُولَّدة</span>
+                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white">{chunks} مجلداً</span>
                   </div>
                 )}
               </div>

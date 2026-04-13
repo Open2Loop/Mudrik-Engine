@@ -48,6 +48,7 @@ describe("model-gateway provider enforcement", () => {
       embedTexts(
         {
           aiProvider: "gemini",
+          generationEngine: "gemini",
           geminiApiKey: null,
           modelApiKey: null,
           embeddingModel: "text-embedding-3-small",
@@ -62,6 +63,7 @@ describe("model-gateway provider enforcement", () => {
     const vecs = await embedTexts(
       {
         aiProvider: "gemini",
+        generationEngine: "gemini",
         geminiApiKey: "test",
         modelApiKey: null,
         embeddingModel: "text-embedding-3-small",
@@ -79,6 +81,7 @@ describe("model-gateway provider enforcement", () => {
       embedTexts(
         {
           aiProvider: "openai",
+          generationEngine: "openai",
           geminiApiKey: null,
           modelApiKey: null,
           embeddingModel: "text-embedding-3-small",
@@ -102,6 +105,7 @@ describe("model-gateway provider enforcement", () => {
     const vecs = await embedTexts(
       {
         aiProvider: "openai",
+        generationEngine: "openai",
         geminiApiKey: null,
         modelApiKey: "sk-test",
         embeddingModel: "text-embedding-3-small",
@@ -119,6 +123,7 @@ describe("model-gateway provider enforcement", () => {
     const text = await completeJson(
       {
         aiProvider: "gemini",
+        generationEngine: "gemini",
         geminiApiKey: "test",
         modelApiKey: null,
         embeddingModel: "text-embedding-3-small",
