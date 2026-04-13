@@ -29,7 +29,7 @@ export async function fetchUserModelSettings(
 
   const ge = data?.generation_engine as string | undefined;
   const generationEngine: GenerationEngine =
-    ge === "gemini" || ge === "openai" ? ge : "sovereign";
+    ge === "openai" ? "openai" : "gemini";
 
   return {
     aiProvider: data?.ai_provider === "openai" ? "openai" : "gemini",
@@ -46,7 +46,7 @@ export async function upsertUserSettings(
   userId: string,
   fields: {
     ai_provider?: "openai" | "gemini";
-    generation_engine?: "sovereign" | "gemini" | "openai";
+    generation_engine?: "gemini" | "openai";
     model_api_key?: string | null;
     gemini_api_key?: string | null;
     embedding_model?: string;

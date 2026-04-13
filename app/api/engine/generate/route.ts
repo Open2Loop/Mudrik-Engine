@@ -1,12 +1,12 @@
 import {
   ENGINE_FULL_SYSTEM_PROMPT_AR,
-  GatewayError,
-  generateSovereignText,
+  completeGenerationWithRetry,
 } from "@/lib/ai-gateway";
 import { sanitizeSovereignProposalOutput } from "@/lib/proposal-output-sanitize";
-import { generateVolume1Hierarchical } from "@/lib/sovereign-volume1-recursive";
 import { TECHNICAL_VOLUMES } from "@/lib/technical-volumes";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { fetchUserModelSettings } from "@/lib/user-settings";
+import type { UserModelSettings } from "@/lib/model-gateway";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,11 +39,8 @@ function buildBaseContext(
 function buildVolumeUserPrompt(baseContext: string, volumeIndexZeroBased: number, totalVolumes: number): string {
   const vol = TECHNICAL_VOLUMES[volumeIndexZeroBased];
   if (!vol) throw new Error("Invalid volume index");
-  if (volumeIndexZeroBased === 0) {
-    throw new Error("Volume 0 uses generateVolume1Hierarchical; do not call buildVolumeUserPrompt.");
-  }
   const densityLine =
-    "الكثافة — MUDRIK_CORE_OS v7.0: لا يقل عن 3000 كلمة لهذا المجلد بالعربية؛ إن دون ذلك يُعدّ المخرج مخالفاً للبروتوكول — وسّع المنهجية. لكل نقطة: قصد استراتيجي ← تفكيك تقني (بنية، بروتوكولات، توصيل، صيانة) ← امتثال (SBC 201/801 وSASO وLCGPA واعتماد ورؤية 2030) ← تخفيف مخاطر؛ وأضف بعداً مالياً/تعاقدياً حيث ينطبق دون اختلاق أرقام. نحو ~30 صفحة تراكمياً.";
+    "الكثافة — MUDRIK_V8: لا يقل عن 3000 كلمة لهذا المجلد بالعربية؛ إن دون ذلك يُعدّ المخرج مخالفاً للبروتوكول — وسّع المنهجية. لكل نقطة: قصد استراتيجي ← تفكيك تقني (بنية، بروتوكولات، توصيل، صيانة) ← امتثال (SBC 201/801/401 وSASO وLCGPA واعتماد ورؤية 2030) ← تخفيف مخاطر؛ وأضف بعداً مالياً/تعاقدياً حيث ينطبق دون اختلاق أرقام. نحو ~30 صفحة تراكمياً.";
   return [
     baseContext,
     "",
@@ -62,15 +59,15 @@ function buildVolumeUserPrompt(baseContext: string, volumeIndexZeroBased: number
   ].join("\n");
 }
 
-async function generateOneVolume(userPrompt: string): Promise<string> {
+async function generateOneVolume(
+  settings: Awaited<ReturnType<typeof fetchUserModelSettings>>,
+  userPrompt: string,
+): Promise<string> {
   try {
-    return await generateSovereignText(ENGINE_FULL_SYSTEM_PROMPT_AR, userPrompt);
-  } catch (firstError) {
-    if (firstError instanceof GatewayError) {
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-      return generateSovereignText(ENGINE_FULL_SYSTEM_PROMPT_AR, userPrompt);
-    }
-    throw firstError;
+    return await completeGenerationWithRetry(settings, ENGINE_FULL_SYSTEM_PROMPT_AR, userPrompt);
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    return completeGenerationWithRetry(settings, ENGINE_FULL_SYSTEM_PROMPT_AR, userPrompt);
   }
 }
 
@@ -132,40 +129,29 @@ export async function POST(request: Request) {
     }
 
     const baseContext = buildBaseContext(projectName, ownerEntity, executionDuration, rfpText);
+    const settings: UserModelSettings = authData?.user?.id
+      ? await fetchUserModelSettings(supabase, authData.user.id)
+      : {
+          aiProvider: "gemini",
+          generationEngine: "gemini",
+          modelApiKey: process.env.OPENAI_API_KEY ?? null,
+          geminiApiKey: process.env.GEMINI_API_KEY ?? null,
+          embeddingModel: "text-embedding-3-small",
+          chatModel: "gpt-4o-mini",
+        };
 
-    let protocolHeader = "sequential-v1";
+    let protocolHeader = "mudrik-v8-cloud";
 
     for (let vi = startIdx; vi < totalV; vi++) {
       try {
-        let raw: string;
-        if (vi === 0) {
-          const v0 = TECHNICAL_VOLUMES[0];
-          raw = await generateVolume1Hierarchical(baseContext, v0.titleAr, v0.focusAr);
-          protocolHeader = "mudrik-core-os-v7";
-        } else {
-          const userPrompt = buildVolumeUserPrompt(baseContext, vi, totalV);
-          raw = await generateOneVolume(userPrompt);
-        }
+        const userPrompt = buildVolumeUserPrompt(baseContext, vi, totalV);
+        const raw = await generateOneVolume(settings, userPrompt);
         sections[vi] = sanitizeSovereignProposalOutput(raw);
       } catch (error) {
         const partialSections: string[] = [];
         for (let k = 0; k < vi; k++) {
           const s = sections[k];
           if (s) partialSections.push(s);
-        }
-        if (error instanceof GatewayError) {
-          const userFacing =
-            error.code === "MODEL_NOT_FOUND" || error.code === "CONNECTION_REFUSED"
-              ? error.message
-              : "Generation failed at model gateway.";
-          return jsonError(502, {
-            error: userFacing,
-            code: error.code,
-            details: error.details ?? error.message,
-            status: error.status ?? 502,
-            failedSection: vi,
-            partialSections,
-          });
         }
         const message = error instanceof Error ? error.message : "Unexpected generation failure.";
         return jsonError(502, {
@@ -190,8 +176,8 @@ export async function POST(request: Request) {
         "Cache-Control": "no-store",
         Pragma: "no-cache",
         Expires: "0",
-        "x-sovereign-volumes": String(totalV),
-        "x-sovereign-protocol": protocolHeader,
+        "x-mudrik-volumes": String(totalV),
+        "x-mudrik-protocol": protocolHeader,
       },
     });
   } catch (error) {

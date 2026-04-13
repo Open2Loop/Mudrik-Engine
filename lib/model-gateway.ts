@@ -25,12 +25,12 @@ function resolveGeminiApiKey(settings: UserModelSettings): string | null {
 
 export type AiProvider = "openai" | "gemini";
 
-/** Proposal text generation routing (embeddings still use aiProvider). */
-export type GenerationEngine = "sovereign" | "gemini" | "openai";
+/** Proposal text generation routing (cloud only). */
+export type GenerationEngine = "gemini" | "openai";
 
 export type UserModelSettings = {
   aiProvider: AiProvider;
-  /** Local Ollama (Llama-class, configurable) vs cloud chat models. */
+  /** Direct cloud generation engine. */
   generationEngine: GenerationEngine;
   modelApiKey: string | null;
   geminiApiKey: string | null;

@@ -184,18 +184,24 @@ export default function CompanyProfilePage() {
       return;
     }
     const file = smartImportFile;
-    if (!file && urlTrimmed) {
-      setNotice({ message: "ميزة التحليل عبر الرابط غير متاحة حالياً. الرجاء رفع ملف PDF أو DOCX.", type: "error" });
-      return;
-    }
-    if (!file) return;
+    if (!file && !urlTrimmed) return;
 
     setIsLoading(true);
     setNotice(null);
     try {
-      const formData = new FormData();
-      formData.set("rfp", file);
-      const res = await fetch("/api/engine/analyze", { method: "POST", body: formData });
+      let res: Response;
+      if (file) {
+        const formData = new FormData();
+        formData.set("rfp", file);
+        res = await fetch("/api/engine/analyze", { method: "POST", body: formData });
+      } else {
+        res = await fetch("/api/company-profile/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: urlTrimmed }),
+        });
+      }
+
       const data = (await res.json()) as { error?: string; text?: string };
       if (!res.ok) {
         throw new Error(data.error ?? "تعذر تحليل الملف.");

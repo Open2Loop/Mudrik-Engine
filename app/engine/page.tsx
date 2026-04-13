@@ -30,6 +30,8 @@ import {
   Download,
 } from "lucide-react";
 
+const RFP_TEXT_SEND_CAP = 24_000;
+
 /** Plain text for Word/paste — المخرجات مُعقّمة من الخادم؛ إزالة أي بقايا شكلية. */
 function stripMarkdownForClipboard(text: string): string {
   return text.replace(/[*#`]/g, "").replace(/\r\n/g, "\n");
@@ -200,6 +202,12 @@ export default function EnginePage() {
     setBusy("generate");
     setNotice(null);
     try {
+      const normalizedRfp = rfpText.trim();
+      const rfpForRequest =
+        normalizedRfp.length > RFP_TEXT_SEND_CAP
+          ? normalizedRfp.slice(0, RFP_TEXT_SEND_CAP)
+          : normalizedRfp;
+
       const payload: {
         projectName: string;
         ownerEntity: string;
@@ -212,7 +220,7 @@ export default function EnginePage() {
         projectName: projectName.trim(),
         ownerEntity: ownerEntity.trim(),
         executionDuration: executionDuration.trim(),
-        rfpText: rfpText.trim() || undefined,
+        rfpText: rfpForRequest || undefined,
       };
       if (mode === "resume" && failedSection !== null && partialSections && partialSections.length > 0) {
         payload.resumeFromSection = failedSection;
@@ -267,16 +275,19 @@ export default function EnginePage() {
 
       setPartialSections(null);
       setFailedSection(null);
-      const volHeader = res.headers.get("x-sovereign-volumes");
+      const volHeader = res.headers.get("x-mudrik-volumes");
       const used = volHeader ? Number(volHeader) : null;
       setChunks(Number.isFinite(used) ? used : null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       const timeoutLike = /timeout|مهلة|AbortError|TimeoutError/i.test(msg);
+      const networkLike = /failed to fetch|networkerror|load failed|network request failed/i.test(msg);
       setNotice({
         message: timeoutLike
           ? "انتهت مهلة التوليد قبل اكتمال المسودة. حاول مرة أخرى أو قلّل حجم المدخلات."
-          : "تعذر إتمام التوليد. تحقق من الشبكة أو أعد المحاولة لاحقاً.",
+          : networkLike
+            ? "تعذر إرسال طلب التوليد بسبب انقطاع الاتصال أو كِبَر الحمولة. أعد المحاولة بعد تقليل النص."
+            : msg.trim() || "تعذر إتمام التوليد. تحقق من الشبكة أو أعد المحاولة لاحقاً.",
         type: "error",
       });
     } finally {

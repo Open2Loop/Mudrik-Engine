@@ -18,9 +18,13 @@ import { createClient } from "@/lib/supabase/client";
 import { Key, Cpu, Box, Save, CheckCircle2, AlertCircle, Loader2, Plug, Sparkles } from "lucide-react";
 import { MudrikLogo } from "@/components/mudrik-logo";
 
+function isMissingGenerationEngineColumn(message: string): boolean {
+  return /generation_engine/i.test(message) && /user_settings/i.test(message);
+}
+
 export default function SettingsPage() {
   const supabase = useMemo(() => createClient(), []);
-  const [generationEngine, setGenerationEngine] = useState<"sovereign" | "gemini" | "openai">("sovereign");
+  const [generationEngine, setGenerationEngine] = useState<"gemini" | "openai">("gemini");
   const [aiProvider, setAiProvider] = useState<"gemini" | "openai">("gemini");
   /** Presence only — never store actual key material from the server in React state. */
   const [hasOpenAiKey, setHasOpenAiKey] = useState(false);
@@ -61,7 +65,7 @@ export default function SettingsPage() {
         | undefined;
       if (row) {
         const ge = row.generation_engine;
-        setGenerationEngine(ge === "gemini" || ge === "openai" ? ge : "sovereign");
+        setGenerationEngine(ge === "openai" ? "openai" : "gemini");
         setAiProvider(row.ai_provider === "openai" ? "openai" : "gemini");
         setHasOpenAiKey(Boolean(row.has_openai_key));
         setHasGeminiKey(Boolean(row.has_gemini_key));
@@ -71,11 +75,20 @@ export default function SettingsPage() {
         setChatModel(row.chat_model ?? "gpt-4o-mini");
       }
     } else {
-      const { data } = await supabase
+      let { data, error } = await supabase
         .from("user_settings")
         .select("generation_engine, ai_provider, embedding_model, chat_model")
         .eq("user_id", uid)
         .maybeSingle();
+      if (error && isMissingGenerationEngineColumn(error.message)) {
+        const retry = await supabase
+          .from("user_settings")
+          .select("ai_provider, embedding_model, chat_model")
+          .eq("user_id", uid)
+          .maybeSingle();
+        data = retry.data as typeof data;
+        error = retry.error;
+      }
       if (data) {
         const row = data as {
           generation_engine?: string | null;
@@ -84,7 +97,7 @@ export default function SettingsPage() {
           chat_model?: string | null;
         };
         const ge = row.generation_engine;
-        setGenerationEngine(ge === "gemini" || ge === "openai" ? ge : "sovereign");
+        setGenerationEngine(ge === "openai" ? "openai" : "gemini");
         setAiProvider(row.ai_provider === "openai" ? "openai" : "gemini");
         setHasOpenAiKey(false);
         setHasGeminiKey(false);
@@ -130,15 +143,28 @@ export default function SettingsPage() {
       const patch: Record<string, string | null> = { ...baseFields };
       if (openaiTrim) patch.model_api_key = openaiTrim;
       if (geminiTrim) patch.gemini_api_key = geminiTrim;
-      const res = await supabase.from("user_settings").update(patch).eq("user_id", uid);
+      let res = await supabase.from("user_settings").update(patch).eq("user_id", uid);
+      if (res.error && isMissingGenerationEngineColumn(res.error.message)) {
+        const { generation_engine: _ignored, ...legacyPatch } = patch;
+        res = await supabase.from("user_settings").update(legacyPatch).eq("user_id", uid);
+      }
       error = res.error;
     } else {
-      const res = await supabase.from("user_settings").insert({
+      let res = await supabase.from("user_settings").insert({
         user_id: uid,
         ...baseFields,
         model_api_key: openaiTrim || null,
         gemini_api_key: geminiTrim || null,
       });
+      if (res.error && isMissingGenerationEngineColumn(res.error.message)) {
+        const { generation_engine: _ignored, ...legacyBaseFields } = baseFields;
+        res = await supabase.from("user_settings").insert({
+          user_id: uid,
+          ...legacyBaseFields,
+          model_api_key: openaiTrim || null,
+          gemini_api_key: geminiTrim || null,
+        });
+      }
       error = res.error;
     }
 
@@ -189,16 +215,15 @@ export default function SettingsPage() {
                     value={generationEngine}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setGenerationEngine(v === "gemini" || v === "openai" ? v : "sovereign");
+                      setGenerationEngine(v === "openai" ? "openai" : "gemini");
                     }}
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all appearance-none"
                   >
-                    <option value="sovereign">المحرك السيادي (Ollama — Llama 3.1 70B افتراضياً) — موصى به</option>
                     <option value="gemini">السحابة — Gemini Flash</option>
                     <option value="openai">السحابة — GPT-4o (OpenAI)</option>
                   </select>
                   <p className="text-xs leading-relaxed text-mist px-1">
-                    المحرك السيادي يستخدم عنوان Ollama من متغيرات البيئة (مثل LOCAL_OLLAMA_URL). التضمين والبحث في الخزنة يستخدمان مزود التضمين أدناه.
+                    التوليد يتم مباشرة عبر مزود سحابي (Gemini أو OpenAI) مع مفاتيحك المحفوظة في الإعدادات/البيئة.
                   </p>
                 </div>
 
