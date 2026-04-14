@@ -14,8 +14,14 @@ export const maxDuration = 600;
 export const revalidate = 0;
 const RETRY_DELAY_MS = 700;
 const RFP_CAP = 24_000;
+const NON_RETRYABLE_GENERATION_ERROR_RE =
+  /GenerateRequestsPerDay|PerDayPerProjectPerModel|quota exceeded|RESOURCE_EXHAUSTED|حصة Gemini اليومية|لا يملك صلاحية الوصول إلى النموذج/i;
 
 const VOLUME_SEPARATOR = "\n\n————————————————————————————\n\n";
+
+function isNonRetryableGenerationError(message: string): boolean {
+  return NON_RETRYABLE_GENERATION_ERROR_RE.test(message);
+}
 
 function buildBaseContext(
   projectName: string,
@@ -51,9 +57,9 @@ function buildVolumeUserPrompt(baseContext: string, volumeIndexZeroBased: number
     vol.focusAr,
     "",
     "معيار اللغة: النص كاملاً للجهة بالعربية الفصحى الاستشارية؛ الإنجليزية للمصطلح التخصصي بين قوسين فقط. ممنوع فقرات أو أقسام كاملة بالإنجليزية؛ ممنوع قوالب This document provides أو عناوين مزدوجة عربي/إنجليزي لنفس المستوى.",
-    "MUDRIK_CORE_OS v7.0 (مسار الظل: تحليل → توسيع ≥1500+ لكل دفعة → Auditor داخلي): تجنّب تكرار العناوين والعبارات الآلية والجمل الفارغة العربية؛ ابدأ المقاطع بتصريحات مباشرة. لكل متطلب تقني ركّز على: القصد الاستراتيجي، التفصيل الهندسي، الامتثال (SBC 201 وSBC 801 وSASO وLCGPA واعتماد ورؤية 2030)، التخفيف من المخاطر.",
+    "MUDRIK_V8 (توسيع عميق): تجنّب تكرار العناوين والعبارات الآلية والجمل الفارغة؛ ابدأ المقاطع بتصريحات مباشرة. لكل متطلب تقني ركّز على: القصد الاستراتيجي، التفصيل الهندسي، الامتثال (SBC 201 وSBC 801 وSASO وLCGPA واعتماد ورؤية 2030)، التخفيف من المخاطر.",
     "سلسلة التفكير والتوسيع (CoT) — داخلية فقط: قبل الكتابة، خطّط ذهنياً لتفكيك هذا المجلد إلى محاور ثم توسيع كل محور؛ لا تُدرج الخطة أو خطوات التفكير في المخرجات.",
-    "أخرج نصاً عربياً خاماً نظيفاً فقط لهذا المجلد (لا تولّد المجلدات الأخرى). التنظيم بالترقيم الهرمي 1.0 / 1.1 / 1.1.1 فقط — بلا Markdown ولا شرطات نقاط.",
+    "أخرج نصاً عربياً نظيفاً فقط لهذا المجلد (لا تولّد المجلدات الأخرى). التنظيم: Technical Compliance Structure — لكل محور المتطلب ثم الحل التقني ثم المرجع؛ ترقيم 1.0 / 1.1 / 1.1.1؛ خطوات داخل الفقرة بـ (أ، ب، ج) أو (1، 2، 3)؛ جداول نصية للمقارنات؛ لغة تعاقدية (تلتزم الجهة المنفذة، يتم التنفيذ وفقاً، تخضع الأعمال). غلق مزدوج ** فقط لمراجع المعايير (**SBC 201**، **NFPA**، إلخ). ممنوع # للعناوين وممنوع شرطات كقوائم.",
     densityLine,
     "حقّن SBC وSASO وLCGPA ورؤية 2030 ومنصة اعتماد؛ اجعل مقاطع الكراسة أعلاه عهوداً حاكمة في النص.",
   ].join("\n");
@@ -65,7 +71,9 @@ async function generateOneVolume(
 ): Promise<string> {
   try {
     return await completeGenerationWithRetry(settings, ENGINE_FULL_SYSTEM_PROMPT_AR, userPrompt);
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error ?? "");
+    if (isNonRetryableGenerationError(message)) throw error;
     await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
     return completeGenerationWithRetry(settings, ENGINE_FULL_SYSTEM_PROMPT_AR, userPrompt);
   }
@@ -154,9 +162,11 @@ export async function POST(request: Request) {
           if (s) partialSections.push(s);
         }
         const message = error instanceof Error ? error.message : "Unexpected generation failure.";
-        return jsonError(502, {
-          error: "Generation request failed.",
-          code: "BAD_RESPONSE",
+        const status = isNonRetryableGenerationError(message) ? 429 : 502;
+        const code = status === 429 ? "RATE_LIMITED" : "BAD_RESPONSE";
+        return jsonError(status, {
+          error: "فشل التوليد. راجع تفاصيل الخطأ أدناه أو تحقق من الشبكة وإعدادات المشروع ثم أعد المحاولة.",
+          code,
           details: message,
           failedSection: vi,
           partialSections,
@@ -183,7 +193,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected generation failure.";
     return jsonError(502, {
-      error: "Generation request failed.",
+      error: "فشل التوليد. راجع تفاصيل الخطأ أدناه أو تحقق من الشبكة وإعدادات المشروع ثم أعد المحاولة.",
       code: "BAD_RESPONSE",
       details: message,
       failedSection: startIdx,

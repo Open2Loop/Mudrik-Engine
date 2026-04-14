@@ -16,7 +16,7 @@
  * Engine UI: POST /api/engine/generate — توليد تتابعي للمجلدات الفنية + تعقيم نصي.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import {
   FileSearch,
@@ -34,7 +34,11 @@ const RFP_TEXT_SEND_CAP = 24_000;
 
 /** Plain text for Word/paste — المخرجات مُعقّمة من الخادم؛ إزالة أي بقايا شكلية. */
 function stripMarkdownForClipboard(text: string): string {
-  return text.replace(/[*#`]/g, "").replace(/\r\n/g, "\n");
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/`/g, "")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/(?<!\*)\*(?!\*)/g, "");
 }
 
 /** Strips ```json ... ``` or ``` ... ``` wrappers so JSON.parse / display succeeds. */
@@ -90,6 +94,34 @@ export default function EnginePage() {
   const [chunks, setChunks] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [exportingDocx, setExportingDocx] = useState(false);
+  /** Simulated progress 0–100 while /api/engine/generate runs (no streaming; UX only). */
+  const [generateProgress, setGenerateProgress] = useState(0);
+  const generateProgressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const generateProgressStartRef = useRef<number>(0);
+
+  function clearGenerateProgressTimer() {
+    if (generateProgressTimerRef.current) {
+      clearInterval(generateProgressTimerRef.current);
+      generateProgressTimerRef.current = null;
+    }
+  }
+
+  function startGenerateProgressSimulation() {
+    clearGenerateProgressTimer();
+    setGenerateProgress(0);
+    generateProgressStartRef.current = Date.now();
+    generateProgressTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - generateProgressStartRef.current;
+      const asymptotic = 92 * (1 - Math.exp(-elapsed / 95_000));
+      setGenerateProgress(Math.min(92, asymptotic));
+    }, 280);
+  }
+
+  useEffect(() => {
+    return () => {
+      clearGenerateProgressTimer();
+    };
+  }, []);
 
   async function copyDraftToClipboard() {
     if (!draft?.trim()) return;
@@ -199,8 +231,10 @@ export default function EnginePage() {
   }
 
   async function runGenerate(mode: "fresh" | "resume" = "fresh") {
+    let completedSuccessfully = false;
     setBusy("generate");
     setNotice(null);
+    startGenerateProgressSimulation();
     try {
       const normalizedRfp = rfpText.trim();
       const rfpForRequest =
@@ -239,13 +273,26 @@ export default function EnginePage() {
       if (!res.ok) {
         const raw = await res.text();
         const parsed = parseJsonErrorPayload(raw);
-        const baseMsg =
+        let baseMsg =
           (parsed?.error && String(parsed.error).trim()) ||
           (raw.trim() ? raw.trim().slice(0, 500) : "تعذر التوليد.");
-        const timeoutLike = /timeout|مهلة|AbortError|TimeoutError/i.test(baseMsg);
-        const msg = timeoutLike
-          ? "انتهت مهلة التوليد لهذا الطلب. قلّل حجم النص أو أعد المحاولة بعد لحظات."
-          : withAuthHint(res, parsed, baseMsg);
+        const detail = parsed?.details ? String(parsed.details).trim() : "";
+        if (detail && (res.status === 502 || res.status === 500) && baseMsg.length < 80) {
+          baseMsg = `${baseMsg} ${detail.slice(0, 400)}`;
+        }
+        const haystack = `${detail} ${baseMsg}`;
+        const invalidKeyLike =
+          /CRITICAL:\s*Gemini API Key is missing|\b401\b|\b403\b|invalid\s*API\s*key|incorrect\s*API\s*key|API\s*key\s*not\s*valid|API_KEY_INVALID/i.test(
+            haystack,
+          ) ||
+          /يرجى إضافة مفتاح|مفتاح\s*OpenAI|مفتاح\s*Gemini|لا يملك صلاحية الوصول إلى نموذج gemini/i.test(haystack);
+        const timeoutLike =
+          /timeout|مهلة|AbortError|TimeoutError/i.test(baseMsg) || /timeout|AbortError/i.test(detail);
+        const msg = invalidKeyLike
+          ? "مفتاح واجهة البرمجة غير صالح أو غير مُعرّف. أضف المفتاح في الإعدادات أو في ملف البيئة ثم أعد المحاولة."
+          : timeoutLike
+            ? "انتهت مهلة التوليد لهذا الطلب. قلّل حجم النص أو أعد المحاولة بعد لحظات."
+            : withAuthHint(res, parsed, baseMsg);
         if (
           parsed &&
           Number.isInteger(parsed.failedSection) &&
@@ -271,6 +318,9 @@ export default function EnginePage() {
       }
 
       const textContent = stripMarkdownCodeFence(await res.text()).trim();
+      clearGenerateProgressTimer();
+      setGenerateProgress(100);
+      completedSuccessfully = true;
       setDraft(textContent || null);
 
       setPartialSections(null);
@@ -278,6 +328,7 @@ export default function EnginePage() {
       const volHeader = res.headers.get("x-mudrik-volumes");
       const used = volHeader ? Number(volHeader) : null;
       setChunks(Number.isFinite(used) ? used : null);
+      window.setTimeout(() => setGenerateProgress(0), 480);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       const timeoutLike = /timeout|مهلة|AbortError|TimeoutError/i.test(msg);
@@ -291,6 +342,8 @@ export default function EnginePage() {
         type: "error",
       });
     } finally {
+      clearGenerateProgressTimer();
+      if (!completedSuccessfully) setGenerateProgress(0);
       setBusy("idle");
     }
   }
@@ -471,13 +524,32 @@ export default function EnginePage() {
                 <p className="text-sm font-medium">ابدأ بتوليد العرض لرؤية النتائج هنا</p>
               </div>
             ) : busy === "generate" ? (
-              <div className="space-y-6 py-10">
-                <div className="h-6 bg-white/10 rounded-full w-3/4 animate-pulse" />
-                <div className="space-y-3">
-                  <div className="h-4 bg-white/5 rounded-full w-full animate-pulse" />
-                  <div className="h-4 bg-white/5 rounded-full w-full animate-pulse" />
-                  <div className="h-4 bg-white/5 rounded-full w-2/3 animate-pulse" />
+              <div className="space-y-5 py-6" aria-busy="true" aria-live="polite">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="flex items-center gap-2 font-semibold text-slate-200">
+                    <Loader2 size={18} className="animate-spin text-amber-400 shrink-0" aria-hidden />
+                    جاري صياغة العرض الفني…
+                  </span>
+                  <span className="tabular-nums text-amber-300/90 font-bold">
+                    {Math.round(generateProgress)}%
+                  </span>
                 </div>
+                <div
+                  className="h-3 w-full overflow-hidden rounded-full bg-white/10 ring-1 ring-white/10"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(generateProgress)}
+                  aria-label="تقدم التوليد"
+                >
+                  <div
+                    className="h-full rounded-full bg-gradient-to-l from-amber-500 to-amber-300 transition-[width] duration-300 ease-out"
+                    style={{ width: `${Math.min(100, generateProgress)}%` }}
+                  />
+                </div>
+                <p className="text-xs leading-relaxed text-white/50">
+                  يتم توليد المجلدات الفنية بالتتابع؛ قد يستغرق ذلك عدة دقائق حسب حجم الكراسة. يتقدم الشريط تدريجياً حتى اكتمال الاستجابة.
+                </p>
               </div>
             ) : draft ? (
               <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">

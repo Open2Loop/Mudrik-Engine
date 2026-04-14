@@ -89,7 +89,9 @@ describe("model-gateway provider enforcement", () => {
         },
         ["hello"]
       )
-    ).rejects.toThrow("يرجى إضافة مفتاح OpenAI في الإعدادات لإتمام البحث والتضمين.");
+    ).rejects.toThrow(
+      "يرجى إضافة مفتاح OpenAI في الإعدادات أو تعيين OPENAI_API_KEY في ملف البيئة لإتمام البحث والتضمين.",
+    );
   });
 
   it("uses OpenAI embeddings when OpenAI is selected", async () => {

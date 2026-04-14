@@ -4,7 +4,8 @@
 
 const ROBOTIC_LINE_PATTERNS: RegExp[] = [
   /^(بالتأكيد|بكل\s*سرور|يسعدني|أنا\s*هنا\s*للمساعدة|كمساعد\s*ذكاء\s*اصطناعي|بصفتي\s*(نموذجاً\s*)?للذكاء\s*الاصطناعي|بصفتي\s*ذكاء\s*اصطناعي)[،,:.\s]*/i,
-  /^(Of\s+course|Certainly|As\s+an\s+AI|This\s+section\s+will\s+cover|I\s+hope\s+this\s+helps|In\s+summary|It\s+is\s+worth\s+noting)[،,.\s]*/i,
+  /^(إليك\s*النص|إليك\s*المسودة|هل\s*تحتاج\s*إلى\s*مزيد|لا\s*تتردد\s*في\s*الطلب)[،,:.\s]*/i,
+  /^(Of\s+course|Certainly|As\s+an\s+AI|This\s+section\s+will\s+cover|I\s+hope\s+this\s+helps|In\s+summary|It\s+is\s+worth\s+noting|Here\s+is\s+your)[،,.\s]*/i,
   /^(يتناول\s*هذا\s*القسم|في\s*هذا\s*القسم\s*سنتناول|أتمنى\s*أن\s*ينال|في\s*الخلاصة|من\s*الجدير\s*بالذكر|باختصار\s*[:،])[،,:.\s]*/i,
 ];
 
@@ -21,7 +22,7 @@ const ENGLISH_BOILERPLATE_PARAGRAPH: RegExp[] = [
 
 /** Arabic stock phrases repeated by weak models — drop short paragraphs that are only this line. */
 const ARABIC_STOCK_ONLY_PARA =
-  /^(تُساهم هذه الأعمال في خلق بيئة عمل فعالة ومريحة|تُتيح للعملاء والمهنيين التفاعل مع الأنظمة التقنيات بسهولة)[.…\s]*$/u;
+  /^(تُساهم هذه الأعمال في خلق بيئة عمل فعالة ومريحة|تُتيح للعملاء والمهنيين التفاعل مع الأنظمة التقنيات بسهولة)[.…\s]*$/;
 
 /** Collapse repeated blank lines; trim edges. */
 function normalizeWhitespace(t: string): string {
@@ -31,15 +32,13 @@ function normalizeWhitespace(t: string): string {
     .trim();
 }
 
-/** Remove markdown-style markers and decorative fences from plain-text output. */
+/** Remove markdown noise but preserve **Standard** bold markers for Word paste. */
 function stripFormattingNoise(line: string): string {
   let s = line;
   s = s.replace(/^#{1,6}\s*/, "");
-  s = s.replace(/\*\*([^*]+)\*\*/g, "$1");
   s = s.replace(/__([^_]+)__/g, "$1");
   s = s.replace(/`+/g, "");
   s = s.replace(/\[(.*?)\]\([^)]*\)/g, "$1");
-  s = s.replace(/[*_]{2,}/g, "");
   return s;
 }
 
@@ -119,16 +118,18 @@ export function sanitizeSovereignProposalOutput(raw: string): string {
   const lines = t.split("\n");
   const out: string[] = [];
   for (const line of lines) {
-    const trimmed = line.trimEnd();
+    let trimmed = line.trimEnd();
     if (/^---+$/.test(trimmed) || /^={3,}$/.test(trimmed)) {
       out.push("");
       continue;
     }
+    trimmed = trimmed.replace(/^[-\u2022\u25E6\u25CF]\s+/, "");
+    trimmed = trimmed.replace(/^\*\s+/, "");
     out.push(stripFormattingNoise(trimmed));
   }
   t = out.join("\n");
   t = t.replace(/`/g, "");
-  t = t.replace(/\*+/g, "");
+  t = t.replace(/(?<!\*)\*(?!\*)/g, "");
   t = normalizeWhitespace(t);
   t = stripLeadingCotLeak(t);
   t = stripLeadingRoboticParagraphs(t);

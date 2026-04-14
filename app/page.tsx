@@ -25,13 +25,13 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="app-shell-frame bg-white">
       <header className="border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
+        <div className="app-shell-header-inner">
           <Link
             href="/"
             prefetch
-            className="flex items-center gap-2 text-xl font-bold text-midnight tracking-tight"
+            className="flex items-center gap-2 text-[clamp(1rem,0.9rem+0.7vw,1.35rem)] font-bold text-midnight tracking-tight"
             aria-label="مُدْرِك — الرئيسية"
           >
             <div className="bg-midnight text-white p-1.5 rounded-lg">
@@ -41,31 +41,33 @@ export default async function HomePage() {
           </Link>
           <Link
             href="/login"
-            className="rounded-full bg-midnight px-6 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 shadow-lg shadow-midnight/10"
+            className="rounded-full bg-midnight px-[clamp(0.9rem,1.5vw,1.5rem)] py-[clamp(0.5rem,0.8vw,0.75rem)] text-[clamp(0.8rem,0.74rem+0.3vw,0.95rem)] font-bold text-white transition hover:bg-slate-800 shadow-lg shadow-midnight/10"
           >
             دخول المنصة
           </Link>
         </div>
       </header>
-      <main className="mx-auto flex max-w-3xl flex-1 flex-col justify-center px-6 py-24 text-center">
-        <h1 className="text-3xl font-bold leading-snug text-midnight md:text-4xl">
+      <main className="app-shell-main grid place-items-center text-center">
+        <div className="w-full max-w-[min(92vw,54rem)]">
+        <h1 className="text-[clamp(1.5rem,1.15rem+1.6vw,2.75rem)] font-bold leading-snug text-midnight">
           مُدْرِك: المنصة الذكية لتحليل وإعداد عروض المناقصات والمزايدات
         </h1>
-        <p className="mx-auto mt-8 max-w-2xl text-start text-base leading-relaxed text-charcoal md:text-lg">
+        <p className="mx-auto mt-[clamp(0.9rem,2.4vh,2rem)] max-w-[min(100%,42rem)] text-start text-[clamp(0.95rem,0.86rem+0.4vw,1.15rem)] leading-relaxed text-charcoal">
           أتمتة دورة حياة تحليل كراسات الشروط (RFP) بدقة عالية. نقوم باستخلاص المتطلبات، ومطابقتها مع
           خبراتكم السابقة، وتوليد مسودات العروض الفنية والمالية المتوافقة آلياً، لضمان الكفاءة والامتثال
           للمعايير.
         </p>
-        <div className="mt-14 flex flex-wrap items-center justify-center gap-4">
+        <div className="mt-[clamp(1.2rem,3.8vh,3rem)] flex flex-wrap items-center justify-center gap-[clamp(0.6rem,1.2vw,1rem)]">
           <Link
             href="/login"
-            className="rounded-full bg-midnight px-8 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-midnight/90"
+            className="rounded-full bg-midnight px-[clamp(1.1rem,1.8vw,2rem)] py-[clamp(0.6rem,0.9vw,0.9rem)] text-[clamp(0.85rem,0.77rem+0.35vw,1rem)] font-semibold text-white shadow-sm transition hover:bg-midnight/90"
           >
             ابدأ الآن
           </Link>
         </div>
+        </div>
       </main>
-      <footer className="border-t border-slate-100 py-10 text-center text-xs text-mist">
+      <footer className="border-t border-slate-100 py-[clamp(0.9rem,2.4vh,2rem)] text-center text-[clamp(0.72rem,0.68rem+0.2vw,0.84rem)] text-mist">
         © {new Date().getFullYear()} مُدْرِك. جميع الحقوق محفوظة.
       </footer>
     </div>

@@ -1,0 +1,82 @@
+name: tactics_lens
+description: "عدسة التكتيكات - تطبيق ذكي لطلاب القدرات والتحصيلي"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Navigation
+  go_router: ^14.8.1
+
+  # Supabase
+  supabase_flutter: ^2.9.0
+
+  # Camera & OCR
+  camera: ^0.11.1
+  google_mlkit_text_recognition: ^0.14.0
+
+  # Video Player
+  video_player: ^2.9.5
+  chewie: ^1.8.5
+
+  # Subscriptions
+  purchases_flutter: ^8.4.1
+
+  # Local Cache
+  hive_flutter: ^1.1.0
+
+  # UI & Animations
+  lottie: ^3.3.1
+  shimmer: ^3.0.0
+  cached_network_image: ^3.4.1
+  flutter_animate: ^4.5.2
+
+  # Firebase (Notifications)
+  firebase_core: ^3.12.1
+  firebase_messaging: ^15.2.5
+  flutter_local_notifications: ^18.0.1
+
+  # Utilities
+  flutter_dotenv: ^5.2.1
+  share_plus: ^10.1.4
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  mocktail: ^1.0.4
+  build_runner: ^2.4.14
+  riverpod_generator: ^2.6.3
+  hive_generator: ^2.0.1
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/lottie/
+    - assets/images/
+    - .env
+
+  fonts:
+    - family: IBMPlexSansArabic
+      fonts:
+        - asset: assets/fonts/IBMPlexSansArabic/IBMPlexSansArabic-Light.ttf
+          weight: 300
+        - asset: assets/fonts/IBMPlexSansArabic/IBMPlexSansArabic-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/IBMPlexSansArabic/IBMPlexSansArabic-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexSansArabic/IBMPlexSansArabic-Bold.ttf
+          weight: 700

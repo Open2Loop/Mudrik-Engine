@@ -28,8 +28,7 @@ export async function fetchUserModelSettings(
   }
 
   const ge = data?.generation_engine as string | undefined;
-  const generationEngine: GenerationEngine =
-    ge === "openai" ? "openai" : "gemini";
+  const generationEngine: GenerationEngine = ge === "openai" ? "openai" : "gemini"; // legacy "huggingface"/"sovereign"/unknown → gemini
 
   return {
     aiProvider: data?.ai_provider === "openai" ? "openai" : "gemini",

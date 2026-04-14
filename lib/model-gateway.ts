@@ -14,13 +14,119 @@ import { logApiError } from "@/lib/api-errors";
 import { assertEmbeddingVector, EMBEDDING_VECTOR_DIMENSIONS } from "@/lib/embedding-config";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const GEMINI_CHAT_MODEL = "gemini-2.5-flash" as const;
+const DEFAULT_GEMINI_CHAT_MODEL = "gemini-2.5-flash";
 const GEMINI_EMBED_MODEL = "gemini-embedding-001" as const;
+
+type GeminiChatModelHandle = ReturnType<InstanceType<typeof GoogleGenerativeAI>["getGenerativeModel"]>;
+
+function resolveGeminiChatModelId(): string {
+  const m = process.env.GEMINI_CHAT_MODEL?.trim();
+  return m && m.length > 0 ? m : DEFAULT_GEMINI_CHAT_MODEL;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Free tier daily caps (e.g. GenerateRequestsPerDayPerModel) — retrying soon does not help. */
+function isGeminiDailyQuotaMessage(raw: string): boolean {
+  return (
+    /GenerateRequestsPerDay|PerDayPerProjectPerModel|RequestsPerDay|GenerateRequestsPerDayPerModel/i.test(raw) ||
+    /quotaId.*PerDay/i.test(raw)
+  );
+}
+
+function isGemini429Status(e: unknown, raw: string): boolean {
+  if (/429|Too Many Requests|RESOURCE_EXHAUSTED/i.test(raw)) return true;
+  if (typeof e === "object" && e !== null && "status" in e) {
+    const s = (e as { status?: number }).status;
+    if (s === 429) return true;
+  }
+  return false;
+}
+
+/**
+ * Retries transient 429s (e.g. per-minute). Stops immediately on daily free-tier exhaustion with a clear Arabic message.
+ */
+async function generateGeminiTextWith429Retry(
+  model: GeminiChatModelHandle,
+  prompt: string,
+  modelId: string,
+  logLabel: string,
+): Promise<string> {
+  const rawMax = process.env.GEMINI_429_MAX_RETRIES?.trim();
+  const parsed = rawMax ? Number(rawMax) : NaN;
+  const maxAttempts = Number.isFinite(parsed) && parsed >= 1 ? Math.min(12, Math.floor(parsed)) : 5;
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      if (!text) throw new Error("استجابة فارغة من Gemini.");
+      return text;
+    } catch (e) {
+      lastError = e;
+      const raw = e instanceof Error ? e.message : String(e ?? "");
+      logApiError(`${logLabel}/attempt-${attempt + 1}`, e);
+
+      if (isGeminiDailyQuotaMessage(raw)) {
+        throw new Error(
+          `حصة Gemini اليومية المجانية لهذا النموذج (${modelId}) مستنفدة لهذا المفتاح (حدّ الطبقة المجانية، مثلاً طلبات/يوم لكل نموذج). الحلول: (1) الانتظار حتى إعادة تعيين الحصة اليومية (2) تفعيل الفوترة في Google AI Studio / Google Cloud (3) تعيين GEMINI_CHAT_MODEL في .env.local إلى نموذج آخر قد تكون حصته منفصلة، مثل gemini-2.0-flash حسب التوفر في حسابك (4) استخدام محرك OpenAI من الإعدادات. https://ai.google.dev/gemini-api/docs/rate-limits`,
+        );
+      }
+
+      if (raw.includes("404") && raw.includes(modelId)) {
+        throw new Error(
+          `مفتاح Gemini الحالي لا يملك صلاحية الوصول إلى النموذج ${modelId}. تحقق من التفعيل أو غيّر GEMINI_CHAT_MODEL.`,
+        );
+      }
+
+      const is429 = isGemini429Status(e, raw);
+      if (!is429 || attempt >= maxAttempts - 1) {
+        throw new Error(raw || "فشل الاتصال بخدمة Gemini.");
+      }
+
+      let waitMs = Math.min(120_000, 4000 * (attempt + 1));
+      const retryIn = /Please retry in ([\d.]+)\s*s/i.exec(raw);
+      if (retryIn) {
+        const sec = parseFloat(retryIn[1]);
+        if (Number.isFinite(sec)) waitMs = Math.min(120_000, Math.ceil(sec * 1000) + 800);
+      }
+      await sleep(waitMs);
+    }
+  }
+  const msg = lastError instanceof Error ? lastError.message : String(lastError ?? "");
+  throw new Error(msg || "فشل الاتصال بخدمة Gemini.");
+}
+
+/** Per upstream HTTP call (OpenAI-compatible). Gemini SDK uses its own transport. */
+function getOpenAiCompatibleTimeoutMs(): number {
+  const raw = process.env.MUDRIK_CLOUD_FETCH_TIMEOUT_MS?.trim();
+  const n = raw ? Number(raw) : NaN;
+  if (Number.isFinite(n) && n >= 30_000) return Math.min(Math.floor(n), 580_000);
+  return 540_000;
+}
+
+function openAiCompatibleSignal(): AbortSignal | undefined {
+  const ms = getOpenAiCompatibleTimeoutMs();
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    return AbortSignal.timeout(ms);
+  }
+  return undefined;
+}
 
 function resolveGeminiApiKey(settings: UserModelSettings): string | null {
   const fromEnv = process.env.GEMINI_API_KEY?.trim();
   if (fromEnv) return fromEnv;
   return settings.geminiApiKey?.trim() || null;
+}
+
+/** Same precedence as Gemini: server .env first, then saved user settings. */
+function resolveOpenAiApiKey(settings: UserModelSettings): string | null {
+  const fromEnv = process.env.OPENAI_API_KEY?.trim();
+  if (fromEnv) return fromEnv;
+  return settings.modelApiKey?.trim() || null;
 }
 
 export type AiProvider = "openai" | "gemini";
@@ -74,21 +180,25 @@ export async function embedTexts(
     return vectors;
   }
 
-  if (!settings.modelApiKey) {
-    throw new Error("يرجى إضافة مفتاح OpenAI في الإعدادات لإتمام البحث والتضمين.");
+  const openAiKey = resolveOpenAiApiKey(settings);
+  if (!openAiKey) {
+    throw new Error(
+      "يرجى إضافة مفتاح OpenAI في الإعدادات أو تعيين OPENAI_API_KEY في ملف البيئة لإتمام البحث والتضمين.",
+    );
   }
   const base = getModelBaseUrl();
   const res = await fetch(`${base}/embeddings`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.modelApiKey}`,
+      Authorization: `Bearer ${openAiKey}`,
     },
     body: JSON.stringify({
       model: settings.embeddingModel,
       input: inputs,
       dimensions: EMBEDDING_VECTOR_DIMENSIONS,
     }),
+    signal: openAiCompatibleSignal(),
   });
   if (!res.ok) {
     const errText = await res.text();
@@ -119,34 +229,24 @@ export async function completeJson(
     if (!apiKey) {
       throw new Error("CRITICAL: Gemini API Key is missing from both settings and .env file.");
     }
+    const modelId = resolveGeminiChatModelId();
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: modelId });
     const prompt = `${systemPrompt}\n\n${userPrompt}\n\nأخرج JSON صالحاً فقط بدون أي نص إضافي أو علامات ترقيم خارج JSON.`;
-    let text = "";
-    try {
-      const result = await model.generateContent(prompt);
-      text = result.response.text();
-    } catch (e) {
-      logApiError("model-gateway/completeJson/gemini", e);
-      const raw = e instanceof Error ? e.message : String(e ?? "");
-      if (raw.includes("404") && raw.includes(GEMINI_CHAT_MODEL)) {
-        throw new Error("مفتاح Gemini الحالي لا يملك صلاحية الوصول إلى نموذج gemini-2.5-flash. تحقق من تفعيل Gemini API على المشروع وأن المفتاح من Google AI Studio/Generative Language API.");
-      }
-      throw new Error(raw || "فشل الاتصال بخدمة Gemini.");
-    }
-    if (!text) throw new Error("استجابة فارغة من Gemini.");
+    const text = await generateGeminiTextWith429Retry(model, prompt, modelId, "model-gateway/completeJson/gemini");
     return text.trim();
   }
 
-  if (!settings.modelApiKey) {
-    throw new Error("يرجى إضافة مفتاح OpenAI في الإعدادات.");
+  const openAiKeyJson = resolveOpenAiApiKey(settings);
+  if (!openAiKeyJson) {
+    throw new Error("يرجى إضافة مفتاح OpenAI في الإعدادات أو تعيين OPENAI_API_KEY في ملف البيئة.");
   }
   const base = getModelBaseUrl();
   const res = await fetch(`${base}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.modelApiKey}`,
+      Authorization: `Bearer ${openAiKeyJson}`,
     },
     body: JSON.stringify({
       model: settings.chatModel,
@@ -157,6 +257,7 @@ export async function completeJson(
         { role: "user", content: userPrompt },
       ],
     }),
+    signal: openAiCompatibleSignal(),
   });
   if (!res.ok) {
     const errText = await res.text();
@@ -180,34 +281,23 @@ export async function completeText(
     if (!apiKey) {
       throw new Error("CRITICAL: Gemini API Key is missing from both settings and .env file.");
     }
+    const modelId = resolveGeminiChatModelId();
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: modelId });
     const prompt = `${systemPrompt}\n\n${userPrompt}`;
-    let text = "";
-    try {
-      const result = await model.generateContent(prompt);
-      text = result.response.text();
-    } catch (e) {
-      logApiError("model-gateway/completeText/gemini", e);
-      const raw = e instanceof Error ? e.message : String(e ?? "");
-      if (raw.includes("404") && raw.includes(GEMINI_CHAT_MODEL)) {
-        throw new Error("مفتاح Gemini الحالي لا يملك صلاحية الوصول إلى نموذج gemini-2.5-flash. تحقق من تفعيل Gemini API على المشروع وأن المفتاح من Google AI Studio/Generative Language API.");
-      }
-      throw new Error(raw || "فشل الاتصال بخدمة Gemini.");
-    }
-    if (!text) throw new Error("استجابة فارغة من Gemini.");
-    return text;
+    return generateGeminiTextWith429Retry(model, prompt, modelId, "model-gateway/completeText/gemini");
   }
 
-  if (!settings.modelApiKey) {
-    throw new Error("يرجى إضافة مفتاح OpenAI في الإعدادات.");
+  const openAiKeyChat = resolveOpenAiApiKey(settings);
+  if (!openAiKeyChat) {
+    throw new Error("يرجى إضافة مفتاح OpenAI في الإعدادات أو تعيين OPENAI_API_KEY في ملف البيئة.");
   }
   const base = getModelBaseUrl();
   const res = await fetch(`${base}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${settings.modelApiKey}`,
+      Authorization: `Bearer ${openAiKeyChat}`,
     },
     body: JSON.stringify({
       model: settings.chatModel,
@@ -217,6 +307,7 @@ export async function completeText(
         { role: "user", content: userPrompt },
       ],
     }),
+    signal: openAiCompatibleSignal(),
   });
   if (!res.ok) {
     const errText = await res.text();

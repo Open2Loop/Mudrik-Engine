@@ -2,17 +2,55 @@ from __future__ import annotations
 
 import os
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
 
 
 MUDRIK_V8_SYSTEM_PROMPT = (
-    "Act as a Senior Saudi Engineering Consultant. "
-    "Use formal Arabic. Avoid fluff and introductory phrases. "
-    "Focus strictly on technical specifications and compliance with the Saudi Building Code (SBC). "
-    "Structure outputs with clear hierarchical headings."
+    "Senior Saudi consultant for Etimad tenders. Technical Compliance Structure: zero narrative fluff; "
+    "contractual procedural Arabic (تلتزم الجهة المنفذة، يتم التنفيذ وفقاً، تخضع الأعمال). "
+    "Each subsection: Requirement -> Technical solution -> Reference code. Numbering 1.0/1.1/1.1.1; "
+    "steps as (أ، ب، ج) or (1، 2، 3) in prose; text tables for spec comparison. "
+    "No # headers; no dash bullets. Use **SBC 201**, **ASTM**, **NFPA**, **SASO** only for key standard acronyms. "
+    "Output like a Technical Method Statement / QCP from a Grade-A firm. No chat intro or closing."
 )
+
+
+def _load_env_from_dotfiles() -> None:
+    """Load .env.local then .env from repo root (no python-dotenv dependency)."""
+    root = Path(__file__).resolve().parent
+    for name in (".env.local", ".env"):
+        path = root / name
+        if not path.is_file():
+            continue
+        try:
+            for raw in path.read_text(encoding="utf-8").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key = key.strip()
+                val = val.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = val
+        except OSError:
+            pass
+
+
+_load_env_from_dotfiles()
+
+
+def _resolve_timeout_sec(explicit: Optional[int] = None) -> int:
+    if explicit is not None:
+        return max(60, min(600, explicit))
+    raw = (os.getenv("MUDRIK_API_TIMEOUT_SEC") or "120").strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        n = 120
+    return max(60, min(600, n))
 
 
 class ApiManager:
@@ -21,12 +59,12 @@ class ApiManager:
     def __init__(
         self,
         provider: str = "gemini",
-        timeout_sec: int = 600,
+        timeout_sec: Optional[int] = None,
         max_retries: int = 2,
         backoff_sec: float = 1.0,
     ) -> None:
         self.provider = provider.lower().strip()
-        self.timeout_sec = timeout_sec
+        self.timeout_sec = _resolve_timeout_sec(timeout_sec)
         self.max_retries = max_retries
         self.backoff_sec = backoff_sec
 
