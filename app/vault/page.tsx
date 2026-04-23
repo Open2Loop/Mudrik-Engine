@@ -343,16 +343,16 @@ export default function VaultPage() {
     <AppShell title="خزنة المستندات">
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-8">
-          <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
+          <div className="bg-surface rounded-[2rem] p-8 shadow-[0_4px_50px_rgba(0,51,52,0.05)]">
             <p className="text-base leading-relaxed text-mist mb-8">
               قم برفع كراسات الشروط والمواصفات (PDF) ليتم تحليلها وفهرستها تلقائياً باستخدام الذكاء الاصطناعي.
             </p>
 
             <div
               className={`relative flex min-h-[280px] cursor-pointer flex-col items-center justify-center rounded-[1.5rem] border-2 border-dashed transition-all duration-300 ${
-                drag 
-                  ? "border-midnight bg-midnight/5 scale-[0.99]" 
-                  : "border-slate-200 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-300"
+                drag
+                  ? "border-secondary bg-secondary/8 scale-[0.99]"
+                  : "border-ghost bg-surface/80 hover:bg-secondary/5 hover:border-secondary/30"
               }`}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -378,7 +378,7 @@ export default function VaultPage() {
                 }}
               />
               <div className="flex flex-col items-center text-center px-6">
-                <div className={`mb-4 rounded-2xl p-4 transition-colors ${drag ? "bg-midnight text-white" : "bg-white text-midnight shadow-sm"}`}>
+                <div className={`mb-4 rounded-2xl p-4 transition-colors ${drag ? "bg-primary text-surface" : "bg-surface text-primary shadow-sm"}`}>
                   <FileUp size={32} />
                 </div>
                 <span className="text-lg font-bold text-midnight">إسقاط PDF أو DOCX هنا أو اختيار ملف</span>
@@ -390,9 +390,9 @@ export default function VaultPage() {
 
             {notice && (
               <div className={`mt-6 flex items-center gap-3 rounded-2xl px-5 py-4 text-sm font-medium animate-in fade-in slide-in-from-top-2 ${
-                notice.type === "error" ? "bg-red-50 text-red-700 border border-red-100" : 
-                notice.type === "success" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : 
-                "bg-blue-50 text-blue-700 border border-blue-100"
+                notice.type === "error" ? "bg-red-50 text-red-700" :
+                notice.type === "success" ? "bg-secondary/10 text-secondary" :
+                "bg-secondary/8 text-secondary"
               }`}>
                 {notice.type === "error" ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
                 {notice.message}
@@ -400,34 +400,34 @@ export default function VaultPage() {
             )}
 
             {busy && (
-              <div className="mt-6 flex items-center gap-4 rounded-2xl bg-midnight/5 px-5 py-4 border border-midnight/10">
-                <div className="h-5 w-5 border-2 border-midnight/20 border-t-midnight rounded-full animate-spin" />
-                <span className="text-sm font-bold text-midnight">جارٍ الرفع والفهرسة الذكية…</span>
+              <div className="mt-6 flex items-center gap-4 rounded-2xl bg-secondary/8 px-5 py-4">
+                <div className="h-5 w-5 border-2 border-secondary/20 border-t-secondary rounded-full animate-spin" />
+                <span className="text-sm font-bold text-primary">جارٍ الرفع والفهرسة الذكية…</span>
               </div>
             )}
           </div>
 
-          <div className="bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-8 py-6">
-              <h2 className="text-xl font-bold text-midnight flex items-center gap-2">
+          <div className="bg-surface rounded-[2rem] overflow-hidden shadow-[0_4px_50px_rgba(0,51,52,0.05)]">
+            <div className="flex items-center justify-between shadow-[0_1px_0_rgba(0,106,103,0.08)] px-8 py-6">
+              <h2 className="text-xl font-bold text-primary flex items-center gap-2">
                 <FileText size={20} className="text-mist" />
                 المستندات المؤرشفة
               </h2>
               <div className="relative">
                 <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-mist" size={16} />
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   placeholder="بحث في المستندات..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="rounded-full border border-slate-200 bg-slate-50 px-10 py-2 text-sm outline-none focus:border-midnight/40 focus:bg-white transition-all w-64"
+                  className="rounded-full border border-ghost bg-surface px-10 py-2 text-sm outline-none focus:border-secondary/40 focus:bg-white transition-all w-64"
                 />
               </div>
             </div>
-            
+
             <div className="overflow-x-auto">
               <table className="w-full text-start text-sm">
-                <thead className="bg-slate-50/50 text-mist">
+                <thead className="bg-secondary/5 text-mist">
                   <tr>
                     <th className="px-8 py-4 font-semibold text-start">اسم المستند</th>
                     <th className="px-8 py-4 font-semibold text-start">الحالة</th>
@@ -435,12 +435,12 @@ export default function VaultPage() {
                     <th className="px-8 py-4 font-semibold text-start">إجراء</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-secondary/8">
                   {filteredRows.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-8 py-16 text-center">
                         <div className="flex flex-col items-center gap-3 text-mist">
-                          <div className="rounded-full bg-slate-50 p-4">
+                          <div className="rounded-full bg-secondary/8 p-4">
                             <FileText size={32} className="opacity-20" />
                           </div>
                           <p className="font-medium">{searchTerm ? "لا توجد نتائج للبحث" : "لا توجد مستندات بعد"}</p>
@@ -452,15 +452,15 @@ export default function VaultPage() {
                       <tr
                         key={r.id}
                         className={`group transition-colors ${
-                          deletedFlashId === r.id ? "bg-emerald-50/60" : "hover:bg-slate-50/50"
+                          deletedFlashId === r.id ? "bg-secondary/10" : "hover:bg-secondary/5"
                         }`}
                       >
                         <td className="px-8 py-5">
                           <div className="flex items-center gap-3">
-                            <div className="rounded-lg bg-slate-100 p-2 group-hover:bg-white transition-colors">
-                              <FileText size={18} className="text-midnight" />
+                            <div className="rounded-lg bg-secondary/10 p-2 group-hover:bg-surface transition-colors">
+                              <FileText size={18} className="text-primary" />
                             </div>
-                            <span className="font-bold text-midnight">{getDocumentDisplayName(r)}</span>
+                            <span className="font-bold text-primary">{getDocumentDisplayName(r)}</span>
                           </div>
                         </td>
                         <td className="px-8 py-5">
@@ -518,14 +518,14 @@ export default function VaultPage() {
         </div>
 
         <div className="space-y-6">
-          <div className="bg-midnight rounded-[2rem] p-8 text-white shadow-lg shadow-midnight/20">
+          <div className="bg-primary rounded-[2rem] p-8 text-surface shadow-[0_4px_50px_rgba(0,51,52,0.12)]">
             <h3 className="text-xl font-bold mb-4">إحصائيات الخزنة</h3>
             <div className="space-y-6 mt-8">
-              <div className="flex justify-between items-end border-b border-white/10 pb-4">
-                <span className="text-sm text-white/60">إجمالي المستندات</span>
+              <div className="flex justify-between items-end shadow-[0_1px_0_rgba(247,250,250,0.08)] pb-4">
+                <span className="text-sm text-surface/60">إجمالي المستندات</span>
                 <span className="text-3xl font-black">{rows.length}</span>
               </div>
-              <div className="flex justify-between items-end border-b border-white/10 pb-4">
+              <div className="flex justify-between items-end shadow-[0_1px_0_rgba(247,250,250,0.08)] pb-4">
                 <span className="text-sm text-white/60">مساحة التخزين</span>
                 <span
                   className="text-lg font-bold"
@@ -559,19 +559,19 @@ export default function VaultPage() {
             </button>
           </div>
 
-          <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
-            <h3 className="text-lg font-bold text-midnight mb-4">تعليمات الاستخدام</h3>
+          <div className="bg-surface rounded-[2rem] p-8 shadow-[0_4px_50px_rgba(0,51,52,0.05)]">
+            <h3 className="text-lg font-bold text-primary mb-4">تعليمات الاستخدام</h3>
             <ul className="space-y-4 text-sm text-mist">
               <li className="flex gap-3">
-                <div className="h-1.5 w-1.5 rounded-full bg-midnight mt-2 shrink-0" />
+                <div className="h-1.5 w-1.5 rounded-full bg-secondary mt-2 shrink-0" />
                 <span>يفضل أن تكون الملفات بصيغة PDF أو DOCX نصية وليست صوراً ممسوحة ضوئياً.</span>
               </li>
               <li className="flex gap-3">
-                <div className="h-1.5 w-1.5 rounded-full bg-midnight mt-2 shrink-0" />
+                <div className="h-1.5 w-1.5 rounded-full bg-secondary mt-2 shrink-0" />
                 <span>يتم تقسيم الملف إلى مقاطع بطول 500 كلمة تقريباً لضمان دقة البحث.</span>
               </li>
               <li className="flex gap-3">
-                <div className="h-1.5 w-1.5 rounded-full bg-midnight mt-2 shrink-0" />
+                <div className="h-1.5 w-1.5 rounded-full bg-secondary mt-2 shrink-0" />
                 <span>المستندات المرفوعة خاصة بك ولا يمكن لأي مستخدم آخر الوصول إليها.</span>
               </li>
             </ul>

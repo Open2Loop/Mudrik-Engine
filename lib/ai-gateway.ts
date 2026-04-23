@@ -1,5 +1,5 @@
 import type { UserModelSettings } from "@/lib/model-gateway";
-import { completeText } from "@/lib/model-gateway";
+import { completeAuxiliaryText, completeText } from "@/lib/model-gateway";
 
 export const ENGINE_BINDING_FACTS_AR = `قفل المصادر (لا تستند إلى معلومات خارج ما يلي):
 1) نص كراسة الشروط كما يُمرَّر في طلب التوليد (إن وُجد).
@@ -62,6 +62,28 @@ export async function completeGenerationWithRetry(
   for (let i = 0; i <= MAX_RETRIES; i += 1) {
     try {
       return await completeGeneration(settings, systemPrompt, userPrompt);
+    } catch (error) {
+      lastError = error;
+      const msg = error instanceof Error ? error.message : String(error ?? "");
+      const isNonRetryable = NON_RETRYABLE_GENERATION_ERROR_RE.test(msg);
+      if (isNonRetryable) break;
+      if (i < MAX_RETRIES) await sleep(RETRY_DELAY_MS);
+    }
+  }
+  const msg = lastError instanceof Error ? lastError.message : "فشل غير متوقع في الاتصال بمحرك التوليد.";
+  throw new Error(msg);
+}
+
+/** Side-panel JSON routes: fast Gemini model + same retry policy as main engine. */
+export async function completeAuxiliaryGenerationWithRetry(
+  settings: UserModelSettings,
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<string> {
+  let lastError: unknown = null;
+  for (let i = 0; i <= MAX_RETRIES; i += 1) {
+    try {
+      return await completeAuxiliaryText(pickEngine(settings), systemPrompt, userPrompt);
     } catch (error) {
       lastError = error;
       const msg = error instanceof Error ? error.message : String(error ?? "");

@@ -13,6 +13,16 @@
   --fluid-shell-gutter: clamp(1rem, 2.2vw, 2rem);
   --fluid-shell-block: clamp(1rem, 2.8vh, 2.75rem);
   --fluid-radius: clamp(1rem, 1.2vw, 1.5rem);
+
+  /* ---------------------------------------------------------------- */
+  /*  The Emerald Atelier — global color tokens                       */
+  /*  (exposed as CSS custom properties for inline `style={{ ... }}`) */
+  /* ---------------------------------------------------------------- */
+  --color-primary: #003334;
+  --color-secondary: #006a67;
+  --color-tertiary: #242e38;
+  --color-surface: #f7fafa;
+  --color-ghost: rgba(0, 106, 103, 0.15);
 }
 
 *,
@@ -37,12 +47,39 @@ body {
 }
 
 body {
-  @apply bg-white text-charcoal antialiased;
+  @apply text-charcoal antialiased;
+  background-color: var(--color-surface);
+  /*
+   * Platform-wide typography lock — IBM Plex Sans Arabic is loaded via
+   * next/font in app/layout.tsx and bound to `--font-ibm-plex`.  Every
+   * Arabic (and Latin) glyph in the Mudrik platform renders through this
+   * single family unless a component explicitly overrides it.
+   */
+  font-family:
+    var(--font-ibm-plex),
+    "IBM Plex Sans Arabic",
+    "Noto Naskh Arabic",
+    system-ui,
+    sans-serif;
   font-size: var(--fluid-step-0);
-  line-height: 1.6;
+  /* Generous line-height prevents Arabic descenders (ر / و / ى) from
+     crowding subsequent lines on body copy. */
+  line-height: 1.75;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * Inherit IBM Plex into every form control.  Without this, browser UA
+ * stylesheets fall back to -apple-system / sans-serif on <input>, <select>,
+ * <textarea>, and <button> even though <body> declares a font-family.
+ */
+input,
+textarea,
+select,
+button {
+  font-family: inherit;
 }
 
 h1 {
@@ -112,6 +149,261 @@ select,
   border-radius: var(--fluid-radius);
 }
 
+/* ---------------------------------------------------------------------- */
+/*  Mudrik Logo Mark                                                      */
+/*                                                                        */
+/*  The `.logo-mudrik` class follows the design-system spec:              */
+/*    80×80 bitmap badge driven by an inline base64 JPEG.                 */
+/*                                                                        */
+/*  NOTE: replace `PASTE_BASE64_HERE` with the full encoded logo string   */
+/*  once it is available. Until then the class is still rendered but the  */
+/*  background layer will resolve to nothing; the accompanying SVG        */
+/*  fallback inside `<LogoBadge />` keeps the UI functional.              */
+/* ---------------------------------------------------------------------- */
+.logo-mudrik {
+  background-image: url("data:image/jpeg;base64,/9j/4AAQ...PASTE_BASE64_HERE");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  width: 80px;
+  height: 80px;
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Emerald Atelier — shared visual accents                               */
+/* ---------------------------------------------------------------------- */
+
+/*
+ * Royal-gold underline for main headings only. Keeps the “no-line” rule
+ * for sectioning (we never use it as a layout separator) — it exists only
+ * to frame an H1/H2/H3 as a first-class title.
+ */
+.mudrik-heading-rule {
+  position: relative;
+  padding-bottom: 8px;
+}
+.mudrik-heading-rule::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 1px;
+  background-color: rgba(212, 175, 55, 0.2); /* #D4AF37 @ 20 % */
+}
+
+/* Force RTL on any paragraph flagged with this helper. */
+.mudrik-rtl,
+.mudrik-rtl p,
+.mudrik-rtl h1,
+.mudrik-rtl h2,
+.mudrik-rtl h3,
+.mudrik-rtl h4 {
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Emerald Atelier — Bento Grid building blocks                          */
+/* ---------------------------------------------------------------------- */
+
+/*
+ * Glass-morphism card used for the three right-column Bento boxes.
+ * Tonal layer (no border) + soft backdrop-blur + inset gold highlight.
+ */
+.mudrik-glass {
+  position: relative;
+  background: linear-gradient(
+    135deg,
+    rgba(247, 250, 250, 0.78) 0%,
+    rgba(0, 106, 103, 0.08) 100%
+  );
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  box-shadow:
+    0 24px 60px rgba(0, 51, 52, 0.1),
+    inset 0 0 0 1px rgba(212, 175, 55, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  border-radius: 28px;
+}
+
+/*
+ * Emerald pulse used inside Bento skeletons while `/api/engine/*` endpoints
+ * are still returning. Breathing animation signals "analysing, not stalled".
+ */
+@keyframes mudrik-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: translateX(0);
+  }
+  50% {
+    opacity: 0.95;
+    transform: translateX(2px);
+  }
+}
+
+.mudrik-pulse {
+  animation: mudrik-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  background: linear-gradient(
+    120deg,
+    rgba(0, 106, 103, 0.18) 0%,
+    rgba(0, 51, 52, 0.1) 50%,
+    rgba(0, 106, 103, 0.18) 100%
+  );
+  background-size: 200% 100%;
+  border-radius: 18px;
+}
+
+/*
+ * Blinking block-cursor appended to the streaming proposal text while
+ * `isGeneratingText` is true. Uses the royal gold so it reads as an
+ * "AI writing in progress" signature against the deep emerald panel.
+ */
+@keyframes mudrik-caret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.mudrik-caret {
+  display: inline-block;
+  width: 0.55ch;
+  height: 1.1em;
+  margin-inline-start: 2px;
+  vertical-align: -0.18em;
+  background: rgba(212, 175, 55, 0.85);
+  border-radius: 2px;
+  animation: mudrik-caret 1.05s steps(1) infinite;
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Bento — Quiet Luxury: shimmer, hover tonal shift, gold micro-glow     */
+/* ---------------------------------------------------------------------- */
+
+@keyframes bento-emerald-shimmer {
+  0% {
+    background-position: 180% 0;
+  }
+  100% {
+    background-position: -180% 0;
+  }
+}
+
+.bento-shimmer-line {
+  border-radius: 9px;
+  min-height: 12px;
+  width: 100%;
+  /* Surface ↔ primary @ 5% — high-polish sweep */
+  background: linear-gradient(
+    100deg,
+    #f0f4f4 0%,
+    rgba(247, 250, 250, 0.98) 25%,
+    rgba(0, 51, 52, 0.05) 50%,
+    rgba(247, 250, 250, 0.98) 75%,
+    #eef3f3 100%
+  );
+  background-size: 220% 100%;
+  animation: bento-emerald-shimmer 1.75s ease-in-out infinite;
+}
+
+.bento-luxury-card {
+  /* Hover background/shadow: Framer `whileHover` (2% lift + 60px ambient) */
+  border: none;
+}
+
+.bento-card-hairline {
+  transition: background 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.bento-luxury-card:hover .bento-card-hairline {
+  background: rgba(212, 175, 55, 0.42) !important;
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.28);
+}
+
+.bento-luxury-card [data-bento-gold] {
+  transition: text-shadow 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.bento-luxury-card:hover [data-bento-gold] {
+  text-shadow: 0 0 10px rgba(212, 175, 55, 0.45);
+  filter: drop-shadow(0 0 3px rgba(212, 175, 55, 0.35));
+}
+
+/* ---------------------------------------------------------------------- */
+/*  Proposal reader — RTL lists (Emerald Atelier)                           */
+/*  Custom bullets/numbers: IBM body remains on <p>; list chrome via CSS.   */
+/* ---------------------------------------------------------------------- */
+
+.proposal-md-reader__ul,
+.proposal-md-reader__ol {
+  list-style: none;
+  margin: 0.55em 0;
+  padding: 0;
+  padding-right: 0.2rem;
+  color: rgba(247, 250, 250, 0.88);
+}
+
+.proposal-md-reader__ol {
+  counter-reset: md-ol;
+}
+
+.proposal-md-reader__li {
+  position: relative;
+  margin: 0.35em 0;
+  line-height: 1.8;
+  padding-right: 1.45rem;
+  padding-left: 0.25rem;
+  text-align: right;
+  unicode-bidi: plaintext;
+}
+
+.proposal-md-reader__ol .proposal-md-reader__li {
+  counter-increment: md-ol;
+  padding-right: 1.9rem;
+}
+
+/* Small emerald disc — RTL: marker sits on the “start” (right) */
+.proposal-md-reader__ul .proposal-md-reader__li::before {
+  content: "";
+  position: absolute;
+  right: 0.1rem;
+  top: 0.62em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #006a67;
+  box-shadow: 0 0 0 1px rgba(0, 106, 103, 0.45);
+}
+
+/* Ordered: secondary numerals, IBM Plex, RTL-aligned */
+.proposal-md-reader__ol .proposal-md-reader__li::before {
+  content: counter(md-ol) ".";
+  position: absolute;
+  right: 0;
+  top: 0.08em;
+  min-width: 1.35rem;
+  text-align: center;
+  font-size: 0.86em;
+  font-weight: 700;
+  color: #006a67;
+  font-family: var(--font-ibm-plex), "IBM Plex Sans Arabic", system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+/* Nested lists: clear bullets that would inherit wrong */
+.proposal-md-reader__ul .proposal-md-reader__ul,
+.proposal-md-reader__ol .proposal-md-reader__ol {
+  margin: 0.3em 0 0.3em 0.25em;
+  padding-right: 0.15rem;
+}
+
 @media (min-resolution: 2dppx) {
   body {
     letter-spacing: 0.01em;
@@ -119,5 +411,9 @@ select,
 }
 
 :focus-visible {
-  @apply outline-none ring-2 ring-midnight/30 ring-offset-2;
+  outline: none;
+  /* Emerald Atelier focus ring: secondary color at ~40% alpha. */
+  box-shadow:
+    0 0 0 2px #ffffff,
+    0 0 0 4px rgba(0, 106, 103, 0.4);
 }

@@ -184,9 +184,9 @@ export default function SettingsPage() {
     <AppShell title="إعدادات المنصة">
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
         <div className="lg:col-span-7">
-          <div className="bg-white rounded-[2rem] border border-slate-200 p-8 md:p-10 shadow-sm">
-            <div className="flex items-center gap-3 mb-8 pb-6 border-b border-slate-100">
-              <div className="bg-slate-100 p-3 rounded-2xl">
+          <div className="bg-surface rounded-[2rem] p-8 md:p-10 shadow-[0_4px_50px_rgba(0,51,52,0.05)]">
+            <div className="flex items-center gap-3 mb-8 pb-6 shadow-[0_1px_0_rgba(0,106,103,0.08)]">
+              <div className="bg-secondary/10 p-3 rounded-2xl">
                 <MudrikLogo size={24} className="text-midnight" />
               </div>
               <div>
@@ -217,7 +217,7 @@ export default function SettingsPage() {
                       const v = e.target.value;
                       setGenerationEngine(v === "openai" ? "openai" : "gemini");
                     }}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all appearance-none"
+                    className="w-full rounded-2xl border border-ghost bg-surface px-5 py-4 text-sm text-charcoal outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all appearance-none"
                   >
                     <option value="gemini">السحابة — Gemini Flash</option>
                     <option value="openai">السحابة — GPT-4o (OpenAI)</option>
@@ -239,7 +239,7 @@ export default function SettingsPage() {
                     id="provider"
                     value={aiProvider}
                     onChange={(e) => setAiProvider(e.target.value === "openai" ? "openai" : "gemini")}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all appearance-none"
+                    className="w-full rounded-2xl border border-ghost bg-surface px-5 py-4 text-sm text-charcoal outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all appearance-none"
                   >
                     <option value="gemini">جوجل جيمني (Gemini Embeddings)</option>
                     <option value="openai">أوبن إيه آي (OpenAI Embeddings)</option>
@@ -263,7 +263,7 @@ export default function SettingsPage() {
                         autoComplete="off"
                         value={openaiKeyDraft}
                         onChange={(e) => setOpenaiKeyDraft(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all"
+                        className="w-full rounded-2xl border border-ghost bg-surface px-5 py-4 text-sm text-charcoal outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all"
                         placeholder="sk-••••••••••••••••••••••••"
                       />
                       <p className="text-xs leading-relaxed text-mist px-1">
@@ -290,7 +290,7 @@ export default function SettingsPage() {
                         autoComplete="off"
                         value={geminiKeyDraft}
                         onChange={(e) => setGeminiKeyDraft(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all"
+                        className="w-full rounded-2xl border border-ghost bg-surface px-5 py-4 text-sm text-charcoal outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all"
                         placeholder="AIzaSy•••••••••••••••••••••••"
                       />
                       <p className="text-xs leading-relaxed text-mist px-1">
@@ -315,7 +315,7 @@ export default function SettingsPage() {
                           id="emb"
                           value={embeddingModel}
                           onChange={(e) => setEmbeddingModel(e.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all appearance-none"
+                          className="w-full rounded-2xl border border-ghost bg-surface px-5 py-4 text-sm text-charcoal outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all appearance-none"
                         >
                           <option value="text-embedding-3-small">text-embedding-3-small (أسرع)</option>
                           <option value="text-embedding-3-large">text-embedding-3-large (أدق)</option>
@@ -334,7 +334,7 @@ export default function SettingsPage() {
                           id="chat"
                           value={chatModel}
                           onChange={(e) => setChatModel(e.target.value)}
-                          className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-5 py-4 text-sm text-charcoal outline-none focus:border-midnight/40 focus:bg-white focus:ring-4 focus:ring-midnight/5 transition-all appearance-none"
+                          className="w-full rounded-2xl border border-ghost bg-surface px-5 py-4 text-sm text-charcoal outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all appearance-none"
                         >
                           <option value="gpt-4o-mini">gpt-4o-mini (اقتصادي)</option>
                           <option value="gpt-4o">gpt-4o (قوي جداً)</option>
@@ -347,7 +347,7 @@ export default function SettingsPage() {
 
                 {notice && (
                   <div className={`flex items-center gap-3 rounded-2xl px-5 py-4 text-sm font-medium animate-in fade-in slide-in-from-top-2 ${
-                    notice.type === "error" ? "bg-red-50 text-red-700 border border-red-100" : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                    notice.type === "error" ? "bg-red-50 text-red-700" : "bg-secondary/10 text-secondary"
                   }`}>
                     {notice.type === "error" ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
                     {notice.message}
@@ -357,7 +357,7 @@ export default function SettingsPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex items-center gap-2 rounded-full bg-midnight px-10 py-4 text-sm font-bold text-white shadow-lg shadow-midnight/20 transition-all hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:translate-y-0"
+                  className="flex items-center gap-2 rounded-full bg-primary px-10 py-4 text-sm font-bold text-surface shadow-lg shadow-primary/20 transition-all hover:bg-[#042323] hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:translate-y-0"
                 >
                   {saving ? (
                     <Loader2 size={18} className="animate-spin" />
@@ -372,7 +372,7 @@ export default function SettingsPage() {
         </div>
 
         <div className="lg:col-span-5 space-y-6">
-          <div className="bg-slate-50 rounded-[2rem] border border-slate-200 p-8">
+          <div className="bg-surface rounded-[2rem] p-8 shadow-[0_4px_50px_rgba(0,51,52,0.04)]">
             <h3 className="text-lg font-bold text-midnight mb-4">لماذا BYOK؟</h3>
             <p className="text-sm leading-relaxed text-mist">
               نحن نتبع سياسة &quot;أحضر مفتاحك الخاص&quot; (Bring Your Own Key) لضمان أقصى درجات الخصوصية والتحكم في التكاليف. 
@@ -386,13 +386,13 @@ export default function SettingsPage() {
               للحصول على أفضل توازن بين السرعة والجودة في معالجة المناقصات العربية، نوصي باستخدام:
             </p>
             <div className="mt-6 space-y-3">
-              <div className="flex items-center justify-between text-xs border-b border-white/10 pb-2">
+              <div className="flex items-center justify-between text-xs shadow-[0_1px_0_rgba(247,250,250,0.08)] pb-2">
                 <span className="text-white/40">للتضمين:</span>
-                <span className="font-mono text-amber-400">text-embedding-3-small</span>
+                <span className="font-mono text-secondary">text-embedding-3-small</span>
               </div>
-              <div className="flex items-center justify-between text-xs border-b border-white/10 pb-2">
+              <div className="flex items-center justify-between text-xs shadow-[0_1px_0_rgba(247,250,250,0.08)] pb-2">
                 <span className="text-white/40">للتوليد:</span>
-                <span className="font-mono text-amber-400">gpt-4o-mini</span>
+                <span className="font-mono text-secondary">gpt-4o-mini</span>
               </div>
             </div>
           </div>

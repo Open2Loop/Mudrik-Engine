@@ -352,7 +352,7 @@ export default function EnginePage() {
     <AppShell title="محرك العطاءات الذكي">
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
         <div className="lg:col-span-7 space-y-8">
-          <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
+          <div className="bg-surface rounded-[2rem] p-8 shadow-[0_18px_50px_rgba(0,51,52,0.05)]">
             <p className="text-base leading-relaxed text-mist mb-8">
               ارفع كراسة الشروط (PDF أو DOCX) لتبدأ صياغة عرضك الفني الفائز. يعمل المحرك السيادي لمُدرك
               بمثابة استشاري تقني أول؛ لتوليد مسودة هندسية عالية الكثافة تربط اشتراطات الكراسة بدقة بالغة
@@ -363,9 +363,9 @@ export default function EnginePage() {
 
             <div
               className={`relative flex min-h-[240px] cursor-pointer flex-col items-center justify-center rounded-[1.5rem] border-2 border-dashed transition-all duration-300 ${
-                drag 
-                  ? "border-midnight bg-midnight/5" 
-                  : "border-slate-200 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-300"
+                drag
+                  ? "border-secondary bg-secondary/10"
+                  : "border-ghost bg-surface/80 hover:bg-secondary/5 hover:border-secondary/30"
               }`}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -391,10 +391,10 @@ export default function EnginePage() {
                 }}
               />
               <div className="flex flex-col items-center text-center px-6">
-                <div className={`mb-4 rounded-2xl p-4 transition-colors ${drag ? "bg-midnight text-white" : "bg-white text-midnight shadow-sm"}`}>
+                <div className={`mb-4 rounded-2xl p-4 transition-colors ${drag ? "bg-primary text-surface" : "bg-surface text-primary shadow-sm"}`}>
                   <FileSearch size={32} />
                 </div>
-                <span className="text-lg font-bold text-midnight">تحليل كراسة الشروط (PDF / DOCX)</span>
+                <span className="text-lg font-bold text-primary">تحليل كراسة الشروط (PDF / DOCX)</span>
                 <span className="mt-2 text-sm text-mist max-w-[280px]">
                   سيتم استخراج النص بالكامل وتجهيزه لعملية التوليد الذكي
                 </span>
@@ -402,20 +402,20 @@ export default function EnginePage() {
             </div>
 
             {busy === "analyze" && (
-              <div className="mt-6 flex items-center gap-4 rounded-2xl bg-midnight/5 px-5 py-4 border border-midnight/10 animate-pulse">
-                <Loader2 size={18} className="animate-spin text-midnight" />
-                <span className="text-sm font-bold text-midnight">جارٍ استخراج وتحليل النص…</span>
+              <div className="mt-6 flex items-center gap-4 rounded-2xl bg-secondary/8 px-5 py-4 animate-pulse">
+                <Loader2 size={18} className="animate-spin text-secondary" />
+                <span className="text-sm font-bold text-primary">جارٍ استخراج وتحليل النص…</span>
               </div>
             )}
 
             {filename && !busy && (
-              <div className="mt-6 flex items-center gap-3 rounded-2xl bg-slate-50 px-5 py-4 border border-slate-200">
-                <div className="bg-white p-2 rounded-lg shadow-sm">
-                  <FileText size={16} className="text-midnight" />
+              <div className="mt-6 flex items-center gap-3 rounded-2xl bg-secondary/8 px-5 py-4">
+                <div className="bg-surface p-2 rounded-lg shadow-sm">
+                  <FileText size={16} className="text-primary" />
                 </div>
                 <div className="flex flex-col">
                   <span className="text-[10px] uppercase tracking-wider text-mist font-bold">الملف النشط</span>
-                  <span className="text-sm font-bold text-midnight">{filename}</span>
+                  <span className="text-sm font-bold text-primary">{filename}</span>
                 </div>
               </div>
             )}
@@ -429,7 +429,7 @@ export default function EnginePage() {
                 id="projectName"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                className="w-full rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-charcoal outline-none transition-all focus:border-midnight/40 focus:ring-4 focus:ring-midnight/5"
+                className="w-full rounded-[1.1rem] border border-ghost bg-surface px-4 py-3 text-sm text-charcoal outline-none transition-all focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10"
                 placeholder="اكتب اسم المشروع"
               />
               <label htmlFor="ownerEntity" className="flex items-center gap-2 text-sm font-bold text-charcoal">
@@ -440,7 +440,7 @@ export default function EnginePage() {
                 id="ownerEntity"
                 value={ownerEntity}
                 onChange={(e) => setOwnerEntity(e.target.value)}
-                className="w-full rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-charcoal outline-none transition-all focus:border-midnight/40 focus:ring-4 focus:ring-midnight/5"
+                className="w-full rounded-[1.1rem] border border-ghost bg-surface px-4 py-3 text-sm text-charcoal outline-none transition-all focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10"
                 placeholder="اكتب الجهة المالكة"
               />
               <label htmlFor="executionDuration" className="flex items-center gap-2 text-sm font-bold text-charcoal">
@@ -451,7 +451,7 @@ export default function EnginePage() {
                 id="executionDuration"
                 value={executionDuration}
                 onChange={(e) => setExecutionDuration(e.target.value)}
-                className="w-full rounded-[1.1rem] border border-slate-200 bg-white px-4 py-3 text-sm text-charcoal outline-none transition-all focus:border-midnight/40 focus:ring-4 focus:ring-midnight/5"
+                className="w-full rounded-[1.1rem] border border-ghost bg-surface px-4 py-3 text-sm text-charcoal outline-none transition-all focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10"
                 placeholder="مثال: 18 شهراً"
               />
               <label htmlFor="rfp" className="flex items-center gap-2 text-sm font-bold text-charcoal">
@@ -463,7 +463,7 @@ export default function EnginePage() {
                 value={rfpText}
                 onChange={(e) => setRfpText(e.target.value)}
                 rows={12}
-                className="w-full rounded-[1.5rem] border border-slate-200 bg-white px-5 py-5 text-sm leading-relaxed text-charcoal outline-none focus:border-midnight/40 focus:ring-4 focus:ring-midnight/5 transition-all resize-none"
+                className="w-full rounded-[1.5rem] border border-ghost bg-surface px-5 py-5 text-sm leading-relaxed text-charcoal outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all resize-none"
                 placeholder="يظهر هنا النص المستخرج بعد التحميل، يمكنك تعديله قبل التوليد…"
               />
             </div>
@@ -473,7 +473,7 @@ export default function EnginePage() {
                 type="button"
                 onClick={() => void runGenerate()}
                 disabled={busy !== "idle"}
-                className="flex items-center gap-2 rounded-full bg-midnight px-8 py-4 text-sm font-bold text-white shadow-lg shadow-midnight/20 transition-all hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:translate-y-0 disabled:shadow-none"
+                className="flex items-center gap-2 rounded-full bg-primary px-8 py-4 text-sm font-bold text-surface shadow-lg shadow-primary/20 transition-all hover:bg-[#042323] hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:translate-y-0 disabled:shadow-none"
               >
                 {busy === "generate" ? (
                   <Loader2 size={18} className="animate-spin" />
@@ -487,22 +487,22 @@ export default function EnginePage() {
                   type="button"
                   onClick={() => void runGenerate("resume")}
                   disabled={busy !== "idle"}
-                  className="flex items-center gap-2 rounded-full border border-midnight/25 bg-white px-6 py-4 text-sm font-bold text-midnight transition hover:bg-slate-50 disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-full border border-ghost bg-surface px-6 py-4 text-sm font-bold text-primary transition hover:bg-secondary/5 disabled:opacity-50"
                 >
                   استئناف من القسم {failedSection + 1}
                 </button>
               )}
             </div>
             {busy === "generate" && (
-              <div className="mt-4 flex items-center gap-3 rounded-2xl bg-blue-50 px-5 py-3 border border-blue-100">
-                <Loader2 size={16} className="animate-spin text-blue-700" />
-                <span className="text-sm font-semibold text-blue-700">جارٍ التوليد التتابعي للمجلدات الفنية…</span>
+              <div className="mt-4 flex items-center gap-3 rounded-2xl bg-secondary/8 px-5 py-3">
+                <Loader2 size={16} className="animate-spin text-secondary" />
+                <span className="text-sm font-semibold text-secondary">جارٍ التوليد التتابعي للمجلدات الفنية…</span>
               </div>
             )}
 
             {notice && (
               <div className={`mt-6 flex items-center gap-3 rounded-2xl px-5 py-4 text-sm font-medium animate-in fade-in slide-in-from-top-2 ${
-                notice.type === "error" ? "bg-red-50 text-red-700 border border-red-100" : "bg-blue-50 text-blue-700 border border-blue-100"
+                notice.type === "error" ? "bg-red-50 text-red-700" : "bg-secondary/8 text-secondary"
               }`}>
                 <AlertCircle size={18} />
                 {notice.message}
@@ -512,9 +512,14 @@ export default function EnginePage() {
         </div>
 
         <div className="lg:col-span-5 space-y-8">
-          <div className="bg-slate-900 rounded-[2rem] p-8 text-white shadow-xl shadow-slate-200">
+          {/*
+            The dark authority panel — "معاينة العرض المولد".
+            Background migrated from `bg-slate-900` to Emerald Atelier primary
+            (#003334). Text uses `text-surface` (#f7fafa) for max readability.
+          */}
+          <div className="bg-primary rounded-[2rem] p-8 text-surface shadow-xl shadow-primary/10">
             <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-              <Sparkles size={22} className="text-amber-400" />
+              <Sparkles size={22} className="text-secondary" />
               معاينة العرض المولد
             </h3>
             
@@ -526,16 +531,16 @@ export default function EnginePage() {
             ) : busy === "generate" ? (
               <div className="space-y-5 py-6" aria-busy="true" aria-live="polite">
                 <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="flex items-center gap-2 font-semibold text-slate-200">
-                    <Loader2 size={18} className="animate-spin text-amber-400 shrink-0" aria-hidden />
+                  <span className="flex items-center gap-2 font-semibold text-surface/80">
+                    <Loader2 size={18} className="animate-spin text-secondary shrink-0" aria-hidden />
                     جاري صياغة العرض الفني…
                   </span>
-                  <span className="tabular-nums text-amber-300/90 font-bold">
+                  <span className="tabular-nums text-secondary font-bold">
                     {Math.round(generateProgress)}%
                   </span>
                 </div>
                 <div
-                  className="h-3 w-full overflow-hidden rounded-full bg-white/10 ring-1 ring-white/10"
+                  className="h-3 w-full overflow-hidden rounded-full bg-surface/10 ring-1 ring-surface/10"
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={100}
@@ -543,27 +548,28 @@ export default function EnginePage() {
                   aria-label="تقدم التوليد"
                 >
                   <div
-                    className="h-full rounded-full bg-gradient-to-l from-amber-500 to-amber-300 transition-[width] duration-300 ease-out"
+                    className="h-full rounded-full bg-gradient-to-l from-secondary to-[#2f8f8b] transition-[width] duration-300 ease-out"
                     style={{ width: `${Math.min(100, generateProgress)}%` }}
                   />
                 </div>
-                <p className="text-xs leading-relaxed text-white/50">
+                <p className="text-xs leading-relaxed text-surface/50">
                   يتم توليد المجلدات الفنية بالتتابع؛ قد يستغرق ذلك عدة دقائق حسب حجم الكراسة. يتقدم الشريط تدريجياً حتى اكتمال الاستجابة.
                 </p>
               </div>
             ) : draft ? (
               <div className="space-y-6 animate-in fade-in zoom-in-95 duration-500">
-                <div className="relative rounded-2xl border border-white/10 bg-white/5 px-5 pb-6 pt-14">
+                {/* Inner preview card — tonal layer on top of the dark primary panel. */}
+                <div className="relative rounded-2xl bg-surface/5 px-5 pb-6 pt-14">
                   <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => void copyDraftToClipboard()}
                       disabled={busy !== "idle"}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold text-white shadow-sm backdrop-blur-sm transition hover:bg-white/15 active:scale-[0.98] disabled:opacity-50"
+                      className="inline-flex items-center gap-2 rounded-full bg-surface/10 px-4 py-2 text-xs font-semibold text-surface shadow-sm backdrop-blur-sm transition hover:bg-surface/20 active:scale-[0.98] disabled:opacity-50"
                     >
                       {copied ? (
                         <>
-                          <Check size={16} className="text-emerald-300" aria-hidden />
+                          <Check size={16} className="text-secondary" aria-hidden />
                           تم النسخ
                         </>
                       ) : (
@@ -573,11 +579,16 @@ export default function EnginePage() {
                         </>
                       )}
                     </button>
+                    {/*
+                      Primary action "تصدير Word":
+                      migrated from amber/gold to Emerald Atelier secondary
+                      (#006a67) with surface text, per the palette spec.
+                    */}
                     <button
                       type="button"
                       onClick={() => void exportDraftAsDocx()}
                       disabled={busy !== "idle" || exportingDocx}
-                      className="inline-flex items-center gap-2 rounded-full border border-amber-400/35 bg-amber-500/15 px-4 py-2 text-xs font-semibold text-amber-100 shadow-sm backdrop-blur-sm transition hover:bg-amber-500/25 active:scale-[0.98] disabled:opacity-50"
+                      className="inline-flex items-center gap-2 rounded-full bg-secondary px-4 py-2 text-xs font-semibold text-surface shadow-sm backdrop-blur-sm transition hover:bg-[#005b58] active:scale-[0.98] disabled:opacity-50"
                     >
                       {exportingDocx ? (
                         <>
@@ -602,32 +613,33 @@ export default function EnginePage() {
                 {typeof chunks === "number" && (
                   <div className="pt-2 border-t border-white/10 flex items-center justify-between">
                     <span className="text-xs text-white/40 font-medium">المجلدات الفنية المُولَّدة</span>
-                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white">{chunks} مجلداً</span>
+                    <span className="rounded-full bg-surface/10 px-3 py-1 text-xs font-bold text-surface">{chunks} مجلداً</span>
                   </div>
                 )}
               </div>
             ) : null}
           </div>
 
-          <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
-            <h3 className="text-lg font-bold text-midnight mb-6">كيف يعمل المحرك؟</h3>
+          {/* No-Line rule: sectioning border removed, swapped for a soft shadow tonal layer. */}
+          <div className="bg-surface rounded-[2rem] p-8 shadow-[0_18px_50px_rgba(0,51,52,0.05)]">
+            <h3 className="text-lg font-bold text-primary mb-6">كيف يعمل المحرك؟</h3>
             <div className="space-y-6">
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-midnight">١</div>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary/10 text-xs font-black text-primary">١</div>
                 <div className="space-y-1">
                   <p className="text-sm font-bold text-midnight">تحليل الكراسة</p>
                   <p className="text-xs text-mist leading-relaxed">نقوم باستخراج النصوص والجداول من ملف PDF بدقة عالية.</p>
                 </div>
               </div>
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-midnight">٢</div>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary/10 text-xs font-black text-primary">٢</div>
                 <div className="space-y-1">
                   <p className="text-sm font-bold text-midnight">البحث الذكي</p>
                   <p className="text-xs text-mist leading-relaxed">نبحث في &quot;الخزنة&quot; عن أفضل المقاطع التي تطابق متطلبات الكراسة.</p>
                 </div>
               </div>
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-midnight">٣</div>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary/10 text-xs font-black text-primary">٣</div>
                 <div className="space-y-1">
                   <p className="text-sm font-bold text-midnight">توليد المسودة</p>
                   <p className="text-xs text-mist leading-relaxed">نقوم بصياغة عرض فني احترافي يدمج متطلباتك مع خبراتك السابقة.</p>
