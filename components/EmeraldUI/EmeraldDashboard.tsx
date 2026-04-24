@@ -29,6 +29,8 @@ import React, { useCallback, useEffect, useRef, useState, type CSSProperties } f
 import { MudrikLogo } from "@/components/mudrik-logo";
 import { useMudrikEngine } from "@/hooks/useMudrikEngine";
 import { useSmoothTypingBuffer } from "@/hooks/useSmoothTypingBuffer";
+import { useProposalsStore } from "@/lib/proposals-store";
+import CommitteeSimulator from "./CommitteeSimulator";
 import ExecutionVisualizer from "./ExecutionVisualizer";
 import GapAnalysisVisualizer from "./GapAnalysisVisualizer";
 import { PremiumMarkdownViewer } from "./PremiumMarkdownViewer";
@@ -172,8 +174,10 @@ export default function EmeraldDashboard() {
   const [ownerEntity, setOwnerEntity] = useState("");
   const [executionDuration, setExecutionDuration] = useState("");
   const [rfpText, setRfpText] = useState("");
+  const { addProposal } = useProposalsStore();
   const [exportState, setExportState] = useState<"idle" | "working">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
+  const [archiveSaved, setArchiveSaved] = useState(false);
   const [fileAnalyzing, setFileAnalyzing] = useState(false);
   const [analyzedFilename, setAnalyzedFilename] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -263,7 +267,18 @@ export default function EmeraldDashboard() {
     setExportError(null);
     setAnalyzedFilename(null);
     setFileError(null);
+    setArchiveSaved(false);
   }, [reset]);
+
+  const handleSaveToArchive = useCallback(() => {
+    if (!proposalText) return;
+    addProposal({
+      title: projectName.trim() || "عرض فني",
+      ownerEntity: ownerEntity.trim(),
+      text: proposalText,
+    });
+    setArchiveSaved(true);
+  }, [addProposal, proposalText, projectName, ownerEntity]);
 
   const handleExportWord = useCallback(async () => {
     if (!(proposalText ?? "").trim() || exportState === "working") return;
@@ -622,6 +637,34 @@ export default function EmeraldDashboard() {
                 </motion.button>
               )}
 
+              {/* Save to archive — appears when text is ready */}
+              {!isGeneratingText && proposalText && (
+                <motion.button
+                  type="button"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.35, ease: EASE, delay: 0.08 }}
+                  onClick={handleSaveToArchive}
+                  disabled={archiveSaved}
+                  style={{
+                    background: archiveSaved
+                      ? "rgba(212, 175, 55, 0.15)"
+                      : "rgba(212, 175, 55, 0.18)",
+                    color: archiveSaved ? "rgba(212,175,55,0.7)" : "#D4AF37",
+                    border: "1px solid rgba(212,175,55,0.3)",
+                    borderRadius: 999,
+                    padding: "8px 18px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: archiveSaved ? "default" : "pointer",
+                    fontFamily: "inherit",
+                    transition: "all 250ms ease",
+                  }}
+                >
+                  {archiveSaved ? "✓ تم الحفظ" : "حفظ في الأرشيف"}
+                </motion.button>
+              )}
+
               {/* Error messages */}
               {(error || exportError) && (
                 <span
@@ -876,6 +919,16 @@ export default function EmeraldDashboard() {
             </span>
           )}
         </div>
+
+        {/* ================================================================
+            COMMITTEE SIMULATOR — appears after proposal is fully generated
+            Self-contained: laser scan + glassmorphism results.
+            Placed inside the dark article so it reads on the dark surface.
+            ================================================================ */}
+        <CommitteeSimulator
+          proposalText={proposalText}
+          visible={panelState === "analysis" && !isGeneratingText && !!proposalText}
+        />
       </article>
 
       {/* ================================================================
