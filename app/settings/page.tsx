@@ -217,7 +217,7 @@ export default function SettingsPage() {
                   </div>
                 ) : null}
 
-                <div className="space-y-6 order-first">
+                <div className="space-y-6">
                   <div className="space-y-3 rounded-2xl border-2 border-secondary/25 bg-secondary/5 p-5">
                     <label
                       htmlFor="geminiKey"

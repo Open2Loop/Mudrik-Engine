@@ -38,7 +38,11 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { streamText } from "ai";
 import { WRITER_AGENT_PROMPT, QA_AGENT_PROMPT } from "@/lib/ai/prompts";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  byokErrorResponse,
+  isByokKeyMissingError,
+} from "@/lib/byok";
+import { assertGeminiApiKey, resolveEngineUserSettings } from "@/lib/engine-user-settings";
 
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
@@ -177,23 +181,12 @@ function buildUserPrompt(
   return lines.join("\n");
 }
 
-async function assertAuthorized(): Promise<void> {
-  const supabase = await createServerSupabaseClient();
-  const { data: authData } = await supabase.auth.getUser();
-
-  const requireAuth =
-    process.env.NODE_ENV === "production" ||
-    process.env.ENGINE_GENERATE_REQUIRE_AUTH === "true";
-
-  if (requireAuth && !authData?.user) {
-    throw new Error("UNAUTHORIZED");
-  }
+async function assertAuthorized(): Promise<string> {
+  const { settings } = await resolveEngineUserSettings();
+  return assertGeminiApiKey(settings);
 }
 
-function resolveGoogleProvider() {
-  const apiKey =
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("MISSING_GOOGLE_API_KEY");
+function resolveGoogleProvider(apiKey: string) {
   return createGoogleGenerativeAI({ apiKey });
 }
 
@@ -220,9 +213,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    await assertAuthorized();
+    const geminiApiKey = await assertAuthorized();
 
-    const google = resolveGoogleProvider();
+    const google = resolveGoogleProvider(geminiApiKey);
 
     console.info("[engine/generate] stream starting", {
       runtime: "edge",
@@ -248,17 +241,16 @@ export async function POST(request: Request) {
     // Immediate streaming response — client receives deltas within ~1-2 s.
     return stream.toUIMessageStreamResponse();
   } catch (error) {
+    if (isByokKeyMissingError(error)) {
+      return byokErrorResponse(error);
+    }
+
     if (error instanceof Error) {
       switch (error.message) {
         case "UNAUTHORIZED":
           return jsonError(401, {
-            error: "يجب تسجيل الدخول لتوليد العرض الفني.",
+            error: "يجب بدء جلسة لاستخدام المحرك. أعد تحميل الصفحة.",
             code: "UNAUTHORIZED",
-          });
-        case "MISSING_GOOGLE_API_KEY":
-          return jsonError(500, {
-            error: "مفتاح Gemini غير مضبوط في بيئة الخادم.",
-            code: "MISSING_KEY",
           });
       }
     }

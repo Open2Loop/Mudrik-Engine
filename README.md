@@ -62,10 +62,11 @@ Required variables (see `.env.example` for the full list):
 |----------|-------------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key |
-| `GEMINI_API_KEY` | Google Gemini API key for the generation engine |
 | `EMBEDDING_VECTOR_DIMENSIONS` | Embedding dimension (default `3072`) |
 
-Optional: `MODEL_API_BASE`, `OPENAI_API_KEY` for OpenAI-compatible providers.
+**BYOK (Bring Your Own Key):** each user adds their own Gemini API key in **Settings** (`/settings`). The platform does not provide shared `GEMINI_API_KEY` / `OPENAI_API_KEY` on the server — remove those from Vercel env in production.
+
+Optional: `MODEL_API_BASE` when using OpenAI-compatible embeddings/chat with a user-supplied OpenAI key.
 
 ### 3. Install and run
 

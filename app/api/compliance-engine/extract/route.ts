@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isByokKeyMissingError } from "@/lib/byok";
+import { assertGeminiApiKey, resolveEngineUserSettings } from "@/lib/engine-user-settings";
 import { extractComplianceFromPdf } from "@/lib/compliance_engine/service";
 
 export const runtime = "nodejs";
@@ -29,7 +31,9 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const result = await extractComplianceFromPdf(buffer);
+    const { settings } = await resolveEngineUserSettings();
+    const geminiApiKey = assertGeminiApiKey(settings);
+    const result = await extractComplianceFromPdf(buffer, { geminiApiKey });
 
     return NextResponse.json({
       ok: true,
@@ -39,6 +43,9 @@ export async function POST(request: Request) {
       extracted: result.data,
     });
   } catch (error) {
+    if (isByokKeyMissingError(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     const message = error instanceof Error ? error.message : "حدث خطأ غير متوقع في compliance_engine.";
     return NextResponse.json({ error: message }, { status: 500 });
   }

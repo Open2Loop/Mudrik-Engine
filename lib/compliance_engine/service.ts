@@ -17,10 +17,13 @@ export type ComplianceExtractionServiceResult = {
   source_char_count: number;
 };
 
-export async function extractComplianceFromPdf(buffer: Buffer): Promise<ComplianceExtractionServiceResult> {
+export async function extractComplianceFromPdf(
+  buffer: Buffer,
+  options: { geminiApiKey?: string | null } = {},
+): Promise<ComplianceExtractionServiceResult> {
   const text = await extractTextFromPdfBuffer(buffer);
   const prompt = buildComplianceExtractionPrompt(text);
-  const raw = await callComplianceModel(prompt);
+  const raw = await callComplianceModel(prompt, options);
   const parsed = parseJsonFromModel(raw);
   const normalized = normalizeComplianceExtractionResult(parsed);
 

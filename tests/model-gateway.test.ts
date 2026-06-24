@@ -28,6 +28,7 @@ vi.mock("@google/generative-ai", () => {
   return { GoogleGenerativeAI };
 });
 
+import { BYOK_MISSING_GEMINI_AR } from "@/lib/byok";
 import { completeJson, embedTexts } from "@/lib/model-gateway";
 
 describe("model-gateway provider enforcement", () => {
@@ -56,7 +57,7 @@ describe("model-gateway provider enforcement", () => {
         },
         ["hello"]
       )
-    ).rejects.toThrow("CRITICAL: Gemini API Key is missing from both settings and .env file.");
+    ).rejects.toThrow(BYOK_MISSING_GEMINI_AR);
   });
 
   it("produces 3072-dim embeddings when Gemini is selected", async () => {
@@ -89,9 +90,7 @@ describe("model-gateway provider enforcement", () => {
         },
         ["hello"]
       )
-    ).rejects.toThrow(
-      "يرجى إضافة مفتاح OpenAI في الإعدادات أو تعيين OPENAI_API_KEY في ملف البيئة لإتمام البحث والتضمين.",
-    );
+    ).rejects.toThrow("أضف مفتاح OpenAI الخاص بك من الإعدادات");
   });
 
   it("uses OpenAI embeddings when OpenAI is selected", async () => {

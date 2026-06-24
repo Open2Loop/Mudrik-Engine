@@ -1,4 +1,5 @@
 import { completeGenerationWithRetry } from "@/lib/ai-gateway";
+import { BYOK_MISSING_GEMINI_AR } from "@/lib/byok";
 import type { UserModelSettings } from "@/lib/model-gateway";
 
 export type MudrikAgentRole = "extractor" | "architect" | "drafter" | "auditor";
@@ -96,11 +97,14 @@ export class MudrikOrchestrator {
     this.settings = options.settings ?? {
       aiProvider: "gemini",
       generationEngine: "gemini",
-      modelApiKey: process.env.OPENAI_API_KEY ?? null,
-      geminiApiKey: process.env.GEMINI_API_KEY ?? null,
+      modelApiKey: null,
+      geminiApiKey: null,
       embeddingModel: "text-embedding-3-small",
       chatModel: "gpt-4o-mini",
     };
+    if (!this.settings.geminiApiKey?.trim() && this.settings.generationEngine === "gemini") {
+      throw new Error(BYOK_MISSING_GEMINI_AR);
+    }
   }
 
   async generateFullProposal(rawKraasaText: string): Promise<MudrikPipelineResult> {

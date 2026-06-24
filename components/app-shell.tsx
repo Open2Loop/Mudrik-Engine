@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Archive, Building2, Cpu, Settings, Star, Vault } from "lucide-react";
 import { GithubIcon } from "@/components/github-icon";
 import type { ReactNode } from "react";
+import { ApiKeyOnboardingBanner } from "@/components/ApiKeyOnboardingBanner";
 import { MunakasaLogo } from "@/components/munakasa-logo";
 import { BRAND_NAME, GITHUB_REPO_URL } from "@/lib/brand";
 
@@ -72,6 +73,7 @@ export function AppShell({
           </h1>
           <div className="h-1.5 w-12 rounded-full bg-secondary/25" />
         </div>
+        <ApiKeyOnboardingBanner />
         <div className="mt-[clamp(0.8rem,2.2vh,2rem)]">{children}</div>
       </main>
     </div>

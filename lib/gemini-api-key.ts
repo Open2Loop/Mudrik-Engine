@@ -1,7 +1,5 @@
 /**
- * Deduplicated Gemini API key candidates + probe so we fail fast (HTTP 400)
- * before streaming, and can fall back when GOOGLE_API_KEY is set but invalid
- * while GEMINI_API_KEY (or user_settings) is valid.
+ * Per-user Gemini API key candidates + probe (BYOK only — no server env fallback).
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -21,30 +19,11 @@ export function collectUniqueApiKeys(
   return out;
 }
 
-/** Server env: same order as model-gateway (first wins in legacy, here we may probe all). */
-export function collectEnvGeminiApiKeyCandidates(): string[] {
-  return collectUniqueApiKeys(
-    process.env.GOOGLE_API_KEY,
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-    process.env.GEMINI_API_KEY,
-  );
-}
-
-/**
- * Prefer the user-saved key first (settings / DB), then server env in the same
- * order as legacy: GOOGLE_API_KEY → GOOGLE_GENERATIVE_AI_API_KEY → GEMINI_API_KEY.
- * Dedupes identical keys so a valid key from settings is not shadowed by a
- * stale duplicate in .env.
- */
+/** User-saved key only (settings / DB). */
 export function collectGeminiApiKeyCandidatesForModelGateway(settings: {
   geminiApiKey?: string | null;
 }): string[] {
-  return collectUniqueApiKeys(
-    settings.geminiApiKey,
-    process.env.GOOGLE_API_KEY,
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-    process.env.GEMINI_API_KEY,
-  );
+  return collectUniqueApiKeys(settings.geminiApiKey);
 }
 
 export function isGeminiApiKeyRejectedError(e: unknown): boolean {
@@ -54,10 +33,6 @@ export function isGeminiApiKeyRejectedError(e: unknown): boolean {
   );
 }
 
-/**
- * Models used to verify a key. Prefer `GEMINI_MODEL` first so the probe matches
- * what `/api/clean-generate` and the engine use (default gemini-2.5-pro), not only legacy flash IDs.
- */
 function defaultProbeModelChain(): string[] {
   const fromEnv = process.env.GEMINI_PROBE_MODELS?.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
   if (fromEnv && fromEnv.length > 0) {
@@ -72,10 +47,6 @@ function defaultProbeModelChain(): string[] {
   );
 }
 
-/**
- * Tries each candidate with a tiny request; returns the first that Google accepts.
- * If only one key exists and it is bad, returns null.
- */
 export async function pickFirstWorkingGeminiApiKey(
   candidates: string[],
 ): Promise<string | null> {
@@ -97,7 +68,6 @@ export async function pickFirstWorkingGeminiApiKey(
             mid,
             "— try next probe model, then other keys if any",
           );
-          /* Try all probe models: first model may 401 while another ID still works; same for truly bad keys (all will fail). */
           continue;
         }
         // eslint-disable-next-line no-console

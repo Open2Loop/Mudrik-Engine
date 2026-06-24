@@ -10,6 +10,7 @@
  * حقوق الملكية محفوظة (ج) ٢٠٢٦ - المؤلف: البراء
  */
 
+import { BYOK_MISSING_GEMINI_AR, BYOK_MISSING_OPENAI_AR } from "@/lib/byok";
 import { logApiError } from "@/lib/api-errors";
 import { assertEmbeddingVector, EMBEDDING_VECTOR_DIMENSIONS } from "@/lib/embedding-config";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -154,15 +155,10 @@ function openAiCompatibleSignal(): AbortSignal | undefined {
 }
 
 function resolveGeminiApiKey(settings: UserModelSettings): string | null {
-  const fromEnv = process.env.GEMINI_API_KEY?.trim();
-  if (fromEnv) return fromEnv;
   return settings.geminiApiKey?.trim() || null;
 }
 
-/** Same precedence as Gemini: server .env first, then saved user settings. */
 function resolveOpenAiApiKey(settings: UserModelSettings): string | null {
-  const fromEnv = process.env.OPENAI_API_KEY?.trim();
-  if (fromEnv) return fromEnv;
   return settings.modelApiKey?.trim() || null;
 }
 
@@ -196,7 +192,7 @@ export async function embedTexts(
   if (settings.aiProvider === "gemini") {
     const apiKey = resolveGeminiApiKey(settings);
     if (!apiKey) {
-      throw new Error("CRITICAL: Gemini API Key is missing from both settings and .env file.");
+      throw new Error(BYOK_MISSING_GEMINI_AR);
     }
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: GEMINI_EMBED_MODEL });
@@ -220,7 +216,7 @@ export async function embedTexts(
   const openAiKey = resolveOpenAiApiKey(settings);
   if (!openAiKey) {
     throw new Error(
-      "يرجى إضافة مفتاح OpenAI في الإعدادات أو تعيين OPENAI_API_KEY في ملف البيئة لإتمام البحث والتضمين.",
+      BYOK_MISSING_OPENAI_AR,
     );
   }
   const base = getModelBaseUrl();
@@ -264,7 +260,7 @@ export async function completeJson(
   if (settings.aiProvider === "gemini") {
     const apiKey = resolveGeminiApiKey(settings);
     if (!apiKey) {
-      throw new Error("CRITICAL: Gemini API Key is missing from both settings and .env file.");
+      throw new Error(BYOK_MISSING_GEMINI_AR);
     }
     const modelId = resolveGeminiChatModelId();
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -276,7 +272,7 @@ export async function completeJson(
 
   const openAiKeyJson = resolveOpenAiApiKey(settings);
   if (!openAiKeyJson) {
-    throw new Error("يرجى إضافة مفتاح OpenAI في الإعدادات أو تعيين OPENAI_API_KEY في ملف البيئة.");
+    throw new Error(BYOK_MISSING_OPENAI_AR);
   }
   const base = getModelBaseUrl();
   const res = await fetch(`${base}/chat/completions`, {
@@ -338,7 +334,7 @@ export async function completeAuxiliaryText(
   if (settings.aiProvider === "gemini") {
     const apiKey = resolveGeminiApiKey(settings);
     if (!apiKey) {
-      throw new Error("CRITICAL: Gemini API Key is missing from both settings and .env file.");
+      throw new Error(BYOK_MISSING_GEMINI_AR);
     }
     const primaryModelId = resolveGeminiMetadataModelId();
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -382,7 +378,7 @@ export async function completeAuxiliaryText(
 
   const openAiKeyAux = resolveOpenAiApiKey(settings);
   if (!openAiKeyAux) {
-    throw new Error("يرجى إضافة مفتاح OpenAI في الإعدادات أو تعيين OPENAI_API_KEY في ملف البيئة.");
+    throw new Error(BYOK_MISSING_OPENAI_AR);
   }
   const base = getModelBaseUrl();
   const res = await fetch(`${base}/chat/completions`, {
@@ -422,7 +418,7 @@ export async function completeText(
   if (settings.aiProvider === "gemini") {
     const apiKey = resolveGeminiApiKey(settings);
     if (!apiKey) {
-      throw new Error("CRITICAL: Gemini API Key is missing from both settings and .env file.");
+      throw new Error(BYOK_MISSING_GEMINI_AR);
     }
     const modelId = resolveGeminiChatModelId();
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -433,7 +429,7 @@ export async function completeText(
 
   const openAiKeyChat = resolveOpenAiApiKey(settings);
   if (!openAiKeyChat) {
-    throw new Error("يرجى إضافة مفتاح OpenAI في الإعدادات أو تعيين OPENAI_API_KEY في ملف البيئة.");
+    throw new Error(BYOK_MISSING_OPENAI_AR);
   }
   const base = getModelBaseUrl();
   const res = await fetch(`${base}/chat/completions`, {

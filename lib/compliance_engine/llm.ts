@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { BYOK_MISSING_GEMINI_AR } from "@/lib/byok";
 
 export type ComplianceEngineModel = "gemini" | "deepseek";
 
@@ -14,10 +15,10 @@ export function resolveComplianceEngineModel(): ComplianceEngineModel {
   return "gemini";
 }
 
-async function callGemini(prompt: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
+async function callGemini(prompt: string, geminiApiKey: string): Promise<string> {
+  const apiKey = geminiApiKey.trim();
   if (!apiKey) {
-    throw new Error("مفتاح Gemini غير موجود. أضف GEMINI_API_KEY في البيئة.");
+    throw new Error(BYOK_MISSING_GEMINI_AR);
   }
   const genAi = new GoogleGenerativeAI(apiKey);
   const model = genAi.getGenerativeModel({ model: "gemini-1.5-pro" });
@@ -71,10 +72,17 @@ async function callDeepSeek(prompt: string): Promise<string> {
   return stripCodeFence(content);
 }
 
-export async function callComplianceModel(prompt: string): Promise<string> {
+export async function callComplianceModel(
+  prompt: string,
+  options: { geminiApiKey?: string | null } = {},
+): Promise<string> {
   const model = resolveComplianceEngineModel();
   if (model === "deepseek") {
     return callDeepSeek(prompt);
   }
-  return callGemini(prompt);
+  const key = options.geminiApiKey?.trim();
+  if (!key) {
+    throw new Error(BYOK_MISSING_GEMINI_AR);
+  }
+  return callGemini(prompt, key);
 }

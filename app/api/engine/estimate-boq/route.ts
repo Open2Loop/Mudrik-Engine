@@ -1,9 +1,9 @@
 import { completeAuxiliaryGenerationWithRetry } from "@/lib/ai-gateway";
+import { isByokKeyMissingError } from "@/lib/byok";
+import { assertAuxiliaryGenerationKey, resolveEngineUserSettings } from "@/lib/engine-user-settings";
 import { NextResponse } from "next/server";
 import type { UserModelSettings } from "@/lib/model-gateway";
 import { METADATA_SOURCE_TEXT_CAP } from "@/lib/engine-metadata";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { fetchUserModelSettings } from "@/lib/user-settings";
 import { parseSidePanelArray } from "@/lib/side-panel-json";
 import type { BoqItem } from "@/lib/engine-types";
 
@@ -29,17 +29,9 @@ function jsonError(status: number, payload: Record<string, unknown>) {
 }
 
 async function getUserSettings(): Promise<UserModelSettings> {
-  const supabase = await createServerSupabaseClient();
-  const { data: authData } = await supabase.auth.getUser();
-  if (authData?.user?.id) return fetchUserModelSettings(supabase, authData.user.id);
-  return {
-    aiProvider: "gemini",
-    generationEngine: "gemini",
-    modelApiKey: process.env.OPENAI_API_KEY ?? null,
-    geminiApiKey: process.env.GEMINI_API_KEY ?? null,
-    embeddingModel: "text-embedding-3-small",
-    chatModel: "gpt-4o-mini",
-  };
+  const { settings } = await resolveEngineUserSettings();
+  assertAuxiliaryGenerationKey(settings);
+  return settings;
 }
 
 export async function POST(request: Request) {
@@ -100,6 +92,9 @@ export async function POST(request: Request) {
       { status: 200 },
     );
   } catch (error) {
+    if (isByokKeyMissingError(error)) {
+      return jsonError(error.status, { success: false, error: error.message, code: error.code });
+    }
     const message = error instanceof Error ? error.message : "Internal API Error";
     // eslint-disable-next-line no-console
     console.error("BOQ API CRASH:", error);
