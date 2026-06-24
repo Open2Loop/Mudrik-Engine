@@ -35,6 +35,7 @@ import { useMudrikEngine } from "@/hooks/useMudrikEngine";
 import { useSmoothTypingBuffer } from "@/hooks/useSmoothTypingBuffer";
 import { createClient } from "@/lib/supabase/client";
 import { ensureAnonymousSession } from "@/lib/supabase/ensure-anonymous-session";
+import { computeProposalComplianceDisplayScore } from "@/lib/proposal-compliance-score";
 import { PROPOSALS_TABLE } from "@/lib/supabase/proposals-table";
 import { PremiumMarkdownViewer } from "./PremiumMarkdownViewer";
 
