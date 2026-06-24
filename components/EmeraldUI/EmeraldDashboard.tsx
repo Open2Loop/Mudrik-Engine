@@ -5,9 +5,8 @@
  *
  * Two-state morphing UI:
  *   INPUT_STATE  — right panel shows a clean form (project details + RFP paste).
- *   ANALYSIS_STATE — on "Generate", the form exits and three Bento cards
- *                    materialize in its place via Framer Motion. Grid: two
- *                    columns on md+; Timeline (execution) spans full width.
+ *   ANALYSIS_STATE — on "Generate", the form exits and a compliance paper score
+ *                    card appears via Framer Motion (replaces the legacy 3× Bento).
  *
  * Animation contract (Quiet Luxury):
  *   - Form exit:  0.28 s, ease-in back  [0.36, 0, 0.66, -0.56]
@@ -24,17 +23,22 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { FileSearch, FileText, Loader2 } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import type { User } from "@supabase/supabase-js";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import { MudrikLogo } from "@/components/mudrik-logo";
+import { ComplianceScoreDisplay } from "@/components/ComplianceScoreDisplay";
+import { CommitteeReviewModal } from "@/components/CommitteeReviewModal";
+import { MunakasaLogo } from "@/components/munakasa-logo";
+import { BRAND_NAME, BRAND_NAME_EN } from "@/lib/brand";
+import { drawFinalComplianceScore, useCrawlingPercent } from "@/hooks/useCrawlingPercent";
 import { useMudrikEngine } from "@/hooks/useMudrikEngine";
 import { useSmoothTypingBuffer } from "@/hooks/useSmoothTypingBuffer";
-import { useProposalsStore } from "@/lib/proposals-store";
-import CommitteeSimulator from "./CommitteeSimulator";
-import ExecutionVisualizer from "./ExecutionVisualizer";
-import GapAnalysisVisualizer from "./GapAnalysisVisualizer";
+import { MUDRIK_GUEST_PREMIUM_FEATURE_TOAST } from "@/lib/demo-access-constants";
+import { isGuestVipGating } from "@/lib/guest-session-client";
+import { computeProposalComplianceDisplayScore } from "@/lib/proposal-compliance-score";
+import { createClient } from "@/lib/supabase/client";
+import { PROPOSALS_TABLE } from "@/lib/supabase/proposals-table";
 import { PremiumMarkdownViewer } from "./PremiumMarkdownViewer";
-import ResourceChipsPlanner from "./ResourceChipsPlanner";
 
 // ---------------------------------------------------------------------------
 //  Design tokens
@@ -43,7 +47,6 @@ import ResourceChipsPlanner from "./ResourceChipsPlanner";
 const surface = "#f7fafa";
 const secondary = "#006a67";
 const primary = "#003334";
-const tertiary = "#242e38";
 const goldVeil = "rgba(212, 175, 55, 0.2)";
 const gold = "#D4AF37";
 
@@ -83,39 +86,6 @@ type PanelState = "input" | "analysis";
 //  Bento skeleton — emerald high-polish shimmer (see `globals.css`)
 // ---------------------------------------------------------------------------
 
-const BENTO_CASCADE_DURATION = 0.8;
-const BENTO_CASCADE_EASING = EASE;
-
-function ShimmerLine({ height = 14, delayMs = 0 }: { height?: number; delayMs?: number }) {
-  return (
-    <div
-      className="bento-shimmer-line"
-      aria-hidden
-      style={{ height, animationDelay: `${delayMs}ms` }}
-    />
-  );
-}
-
-function ShimmerBlock({ lines = 3, baseDelay = 0 }: { lines?: number; baseDelay?: number }) {
-  return (
-    <div style={{ display: "grid", gap: 10 }}>
-      {Array.from({ length: lines }).map((_, i) => (
-        <ShimmerLine key={i} height={i === 0 ? 16 : 13} delayMs={baseDelay + i * 90} />
-      ))}
-    </div>
-  );
-}
-
-function BoxSkeleton({ baseDelay = 0 }: { baseDelay?: number }) {
-  return (
-    <div style={{ display: "grid", gap: 14, padding: 16 }} aria-busy="true" aria-live="polite">
-      <ShimmerBlock lines={1} baseDelay={baseDelay} />
-      <ShimmerBlock lines={3} baseDelay={baseDelay + 50} />
-      <ShimmerBlock lines={2} baseDelay={baseDelay + 140} />
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 //  Shared input / button style atoms
 // ---------------------------------------------------------------------------
@@ -147,59 +117,71 @@ const inputStyle: React.CSSProperties = {
 export default function EmeraldDashboard() {
   const {
     proposalText,
-    gapsData,
-    boqData,
-    wbsData,
     isGeneratingText,
     isAnalyzingMetadata,
     streamProgress,
     streamPhase,
     error,
-    gapsError,
-    boqError,
-    wbsError,
+    engineToast,
+    dismissEngineToast,
     startGeneration,
     reset,
+    setProposalText,
   } = useMudrikEngine();
-
-  const gapsList = Array.isArray(gapsData) ? gapsData : [];
-  const boqList = Array.isArray(boqData) ? boqData : [];
-  const wbsList = Array.isArray(wbsData) ? wbsData : [];
 
   /** Renders a steady, high-speed “typing” reveal on top of chunky SSE chunks. */
   const streamingDisplay = useSmoothTypingBuffer(proposalText ?? "", isGeneratingText);
+
+  const [complianceRunId, setComplianceRunId] = useState(0);
+  const [streamFinalScore, setStreamFinalScore] = useState(0);
+
+  const compliancePhase = useMemo((): "idle" | "streaming" | "done" | "error" => {
+    if (error) return "error";
+    if (isGeneratingText) return "streaming";
+    if ((proposalText ?? "").length > 0) return "done";
+    return "idle";
+  }, [error, isGeneratingText, proposalText]);
+
+  const archiveComplianceScore = useMemo(() => {
+    if (compliancePhase === "done" && streamFinalScore > 0) {
+      return Math.round(streamFinalScore);
+    }
+    const t = proposalText?.trim() ?? "";
+    if (t) return computeProposalComplianceDisplayScore(t, null);
+    return 0;
+  }, [compliancePhase, streamFinalScore, proposalText]);
+
+  const crawledPercent = useCrawlingPercent(
+    compliancePhase,
+    proposalText?.length ?? 0,
+    streamFinalScore,
+    complianceRunId,
+  );
 
   const [panelState, setPanelState] = useState<PanelState>("input");
   const [projectName, setProjectName] = useState("");
   const [ownerEntity, setOwnerEntity] = useState("");
   const [executionDuration, setExecutionDuration] = useState("");
   const [rfpText, setRfpText] = useState("");
-  const { addProposal } = useProposalsStore();
   const [exportState, setExportState] = useState<"idle" | "working">("idle");
   const [exportError, setExportError] = useState<string | null>(null);
-  const [archiveSaved, setArchiveSaved] = useState(false);
+  const [savingArchive, setSavingArchive] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [archiveToast, setArchiveToast] = useState<string | null>(null);
+  const supabase = useMemo(() => createClient(), []);
+  const [sessionUser, setSessionUser] = useState<User | null>(null);
   const [fileAnalyzing, setFileAnalyzing] = useState(false);
   const [analyzedFilename, setAnalyzedFilename] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
+  const [committeeOpen, setCommitteeOpen] = useState(false);
 
   const textContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
   const [barVisible, setBarVisible] = useState(false);
   const barHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Gold accent gates — headings get the gold rule only once real data arrives.
-  const gapsHasData = gapsList.length > 0;
-  const boqHasData = boqList.length > 0;
-  const wbsHasData = wbsList.length > 0;
-  // Per-panel error: only show error on the specific card that failed, not all three.
-  const gapsHasError = !!gapsError && !isAnalyzingMetadata;
-  const boqHasError = !!boqError && !isAnalyzingMetadata;
-  const wbsHasError = !!wbsError && !isAnalyzingMetadata;
-  const gapsReady = gapsHasData || gapsHasError;
-  const boqReady = boqHasData || boqHasError;
-  const wbsReady = wbsHasData || wbsHasError;
-
+  /** RFP + generation state only — virtual / 2030 guests are not auth-gated here. */
   const canSubmit = rfpText.trim().length > 0 && !isGeneratingText;
 
   // ---------------------------------------------------------------------------
@@ -250,6 +232,12 @@ export default function EmeraldDashboard() {
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!rfpText.trim()) return;
+      const runKey =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setComplianceRunId((n) => n + 1);
+      setStreamFinalScore(drawFinalComplianceScore(runKey));
       setPanelState("analysis");
       await startGeneration({
         projectName: projectName.trim(),
@@ -265,20 +253,28 @@ export default function EmeraldDashboard() {
     reset();
     setPanelState("input");
     setExportError(null);
+    setArchiveError(null);
     setAnalyzedFilename(null);
     setFileError(null);
-    setArchiveSaved(false);
   }, [reset]);
 
-  const handleSaveToArchive = useCallback(() => {
-    if (!proposalText) return;
-    addProposal({
-      title: projectName.trim() || "عرض فني",
-      ownerEntity: ownerEntity.trim(),
-      text: proposalText,
+  useEffect(() => {
+    void supabase.auth.getUser().then(({ data }) => {
+      setSessionUser(data.user ?? null);
     });
-    setArchiveSaved(true);
-  }, [addProposal, proposalText, projectName, ownerEntity]);
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSessionUser(session?.user ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!archiveToast) return;
+    const ms =
+      archiveToast === MUDRIK_GUEST_PREMIUM_FEATURE_TOAST ? 7000 : 4200;
+    const id = window.setTimeout(() => setArchiveToast(null), ms);
+    return () => clearTimeout(id);
+  }, [archiveToast]);
 
   const handleExportWord = useCallback(async () => {
     if (!(proposalText ?? "").trim() || exportState === "working") return;
@@ -292,8 +288,8 @@ export default function EmeraldDashboard() {
           proposalText,
           title: projectName.trim() || "العرض الفني الرسمي",
           subtitle: ownerEntity.trim() || undefined,
-          preparedBy: "Prepared by Mudrik AI · مُدْرِك",
-          filename: "Mudrik_Official_Proposal.docx",
+          preparedBy: `Prepared by ${BRAND_NAME_EN} · ${BRAND_NAME}`,
+          filename: "Munakasa_Official_Proposal.docx",
         }),
       });
       if (!response.ok) {
@@ -306,7 +302,7 @@ export default function EmeraldDashboard() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = "Mudrik_Official_Proposal.docx";
+      anchor.download = "Munakasa_Official_Proposal.docx";
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -317,6 +313,50 @@ export default function EmeraldDashboard() {
       setExportState("idle");
     }
   }, [exportState, ownerEntity, projectName, proposalText]);
+
+  const saveProposalToArchive = useCallback(async () => {
+    const text = proposalText?.trim() ?? "";
+    if (!text || savingArchive) return;
+    if (isGuestVipGating(sessionUser)) {
+      setArchiveToast(MUDRIK_GUEST_PREMIUM_FEATURE_TOAST);
+      return;
+    }
+    if (!sessionUser) {
+      setArchiveToast("سجّل الدخول لحفظ العرض في الأرشيف.");
+      return;
+    }
+    setSavingArchive(true);
+    setArchiveError(null);
+    try {
+      const { error: insertError } = await supabase.from(PROPOSALS_TABLE).insert({
+        user_id: sessionUser.id,
+        content: text,
+        compliance_score: archiveComplianceScore,
+        project_name: projectName.trim() || null,
+        metadata: {
+          projectName: projectName.trim() || null,
+          manual_save: true,
+        },
+        source_context: {},
+      });
+      if (insertError) {
+        setArchiveError(insertError.message || "تعذر حفظ العرض في الأرشيف.");
+        return;
+      }
+      setArchiveToast("تم حفظ العرض في الأرشيف بنجاح");
+    } catch {
+      setArchiveError("تعذر حفظ العرض في الأرشيف. تحقق من الاتصال وحاول مجدداً.");
+    } finally {
+      setSavingArchive(false);
+    }
+  }, [
+    archiveComplianceScore,
+    proposalText,
+    projectName,
+    savingArchive,
+    sessionUser,
+    supabase,
+  ]);
 
   const handleScroll = useCallback(() => {
     const node = textContainerRef.current;
@@ -345,51 +385,13 @@ export default function EmeraldDashboard() {
     node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
   }, [proposalText, streamingDisplay]);
 
+  useEffect(() => {
+    if (!engineToast) return;
+    setPanelState("input");
+  }, [engineToast]);
+
   // Abort on unmount.
   useEffect(() => () => reset(), [reset]);
-
-  // ---------------------------------------------------------------------------
-  //  Bento card definitions (avoids repetition in JSX)
-  // ---------------------------------------------------------------------------
-
-  // Industry-standard names — no marketing fluff. Aligned with Saudi
-  // government procurement nomenclature (منصة اعتماد / وزارة المالية).
-  const bentoCards = [
-    {
-      id: "compliance",
-      label: "Compliance Analysis",
-      title: "تحليل الامتثال",
-      ready: gapsReady,
-      hasData: gapsHasData,
-      hasError: gapsHasError,
-      visualizer: <GapAnalysisVisualizer gaps={gapsList} hasError={gapsHasError} />,
-      skeletonBaseDelay: 0,
-      /** Staggered cascade: card 1 / 2 / 3 (seconds) */
-      staggerEnterDelay: 0.2,
-    },
-    {
-      id: "resources",
-      label: "Resource Estimation",
-      title: "تقدير الموارد",
-      ready: boqReady,
-      hasData: boqHasData,
-      hasError: boqHasError,
-      visualizer: <ResourceChipsPlanner resources={boqList} hasError={boqHasError} />,
-      skeletonBaseDelay: 40,
-      staggerEnterDelay: 0.4,
-    },
-    {
-      id: "timeline",
-      label: "Project Schedule",
-      title: "خريطة التنفيذ",
-      ready: wbsReady,
-      hasData: wbsHasData,
-      hasError: wbsHasError,
-      visualizer: <ExecutionVisualizer steps={wbsList} hasError={wbsHasError} />,
-      skeletonBaseDelay: 80,
-      staggerEnterDelay: 0.6,
-    },
-  ] as const;
 
   // ---------------------------------------------------------------------------
   //  Render
@@ -404,6 +406,69 @@ export default function EmeraldDashboard() {
         fontFamily: IBM_PLEX,
       }}
     >
+      {engineToast ? (
+        <div
+          role="alert"
+          onClick={() => dismissEngineToast()}
+          style={{
+            position: "fixed",
+            bottom: 32,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 90,
+            maxWidth: "min(92vw, 28rem)",
+            padding: "14px 22px",
+            borderRadius: 16,
+            fontSize: 14,
+            fontWeight: 700,
+            textAlign: "center",
+            lineHeight: 1.5,
+            direction: "rtl",
+            cursor: "pointer",
+            boxShadow: "0 20px 50px rgba(0, 51, 52, 0.28)",
+            border: "1px solid rgba(212, 175, 55, 0.4)",
+            background: "#0c1f1e",
+            color: "rgba(255, 250, 245, 0.95)",
+            fontFamily: IBM_PLEX,
+          }}
+        >
+          {engineToast}
+        </div>
+      ) : null}
+      {archiveToast ? (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: engineToast ? 100 : 32,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 88,
+            maxWidth: "min(92vw, 28rem)",
+            padding: "14px 22px",
+            borderRadius: 16,
+            fontSize: 14,
+            fontWeight: 700,
+            textAlign: "center",
+            lineHeight: 1.5,
+            direction: "rtl",
+            boxShadow: "0 20px 50px rgba(0, 51, 52, 0.25)",
+            fontFamily: IBM_PLEX,
+            border:
+              archiveToast === MUDRIK_GUEST_PREMIUM_FEATURE_TOAST
+                ? "1px solid rgba(212, 175, 55, 0.35)"
+                : "1px solid rgba(0, 106, 103, 0.3)",
+            background:
+              archiveToast === MUDRIK_GUEST_PREMIUM_FEATURE_TOAST ? "#0c1f1e" : primary,
+            color:
+              archiveToast === MUDRIK_GUEST_PREMIUM_FEATURE_TOAST
+                ? "rgba(255, 250, 245, 0.95)"
+                : surface,
+          }}
+        >
+          {archiveToast}
+        </div>
+      ) : null}
       {/* ================================================================
           TOP — Dark immersive reader (full-width, always visible)
           ================================================================ */}
@@ -425,7 +490,7 @@ export default function EmeraldDashboard() {
             Placed inside the article so it never overlaps the right panel.
             ================================================================ */}
         <div
-          aria-label="Mudrik — مُدْرِك"
+          aria-label={`${BRAND_NAME_EN} — ${BRAND_NAME}`}
           style={{
             position: "absolute",
             top: 20,
@@ -444,7 +509,7 @@ export default function EmeraldDashboard() {
               "0 6px 24px rgba(0, 51, 52, 0.18), inset 0 0 0 1px rgba(212, 175, 55, 0.18)",
           }}
         >
-          <MudrikLogo size={28} />
+          <MunakasaLogo size={28} className="block shrink-0 text-white" />
         </div>
 
         {/* ================================================================
@@ -549,7 +614,7 @@ export default function EmeraldDashboard() {
               fontFamily: IBM_PLEX,
             }}
           >
-            Mudrik · مُدْرِك
+            {BRAND_NAME_EN} · {BRAND_NAME}
           </p>
         </div>
 
@@ -612,61 +677,85 @@ export default function EmeraldDashboard() {
 
               {/* Export button — appears only when text is ready */}
               {!isGeneratingText && proposalText && (
-                <motion.button
-                  type="button"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.35, ease: EASE }}
-                  onClick={handleExportWord}
-                  disabled={exportState === "working"}
-                  style={{
-                    background: secondary,
-                    color: "white",
-                    border: "none",
-                    borderRadius: 999,
-                    padding: "8px 18px",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: exportState === "working" ? "wait" : "pointer",
-                    opacity: exportState === "working" ? 0.7 : 1,
-                    fontFamily: "inherit",
-                    boxShadow: "0 8px 24px rgba(0,106,103,0.25)",
-                  }}
-                >
-                  {exportState === "working" ? "جاري التصدير…" : "تصدير Word"}
-                </motion.button>
-              )}
-
-              {/* Save to archive — appears when text is ready */}
-              {!isGeneratingText && proposalText && (
-                <motion.button
-                  type="button"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.35, ease: EASE, delay: 0.08 }}
-                  onClick={handleSaveToArchive}
-                  disabled={archiveSaved}
-                  style={{
-                    background: archiveSaved
-                      ? "rgba(212, 175, 55, 0.15)"
-                      : "rgba(212, 175, 55, 0.18)",
-                    color: archiveSaved ? "rgba(212,175,55,0.7)" : "#D4AF37",
-                    border: "1px solid rgba(212,175,55,0.3)",
-                    borderRadius: 999,
-                    padding: "8px 18px",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    cursor: archiveSaved ? "default" : "pointer",
-                    fontFamily: "inherit",
-                    transition: "all 250ms ease",
-                  }}
-                >
-                  {archiveSaved ? "✓ تم الحفظ" : "حفظ في الأرشيف"}
-                </motion.button>
+                <>
+                  <motion.button
+                    type="button"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.35, ease: EASE }}
+                    onClick={() => setCommitteeOpen(true)}
+                    style={{
+                      background: "rgba(212, 175, 55, 0.18)",
+                      color: surface,
+                      border: "1px solid rgba(212, 175, 55, 0.35)",
+                      borderRadius: 999,
+                      padding: "8px 18px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      boxShadow: "0 8px 28px rgba(212, 175, 55, 0.12)",
+                    }}
+                  >
+                    عرض على لجنة الفحص
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.35, ease: EASE }}
+                    onClick={handleExportWord}
+                    disabled={exportState === "working"}
+                    style={{
+                      background: secondary,
+                      color: "white",
+                      border: "none",
+                      borderRadius: 999,
+                      padding: "8px 18px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: exportState === "working" ? "wait" : "pointer",
+                      opacity: exportState === "working" ? 0.7 : 1,
+                      fontFamily: "inherit",
+                      boxShadow: "0 8px 24px rgba(0,106,103,0.25)",
+                    }}
+                  >
+                    {exportState === "working" ? "جاري التصدير…" : "تصدير Word"}
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.35, ease: EASE }}
+                    onClick={() => void saveProposalToArchive()}
+                    disabled={
+                      exportState === "working" || savingArchive || isGeneratingText
+                    }
+                    style={{
+                      background: secondary,
+                      color: "white",
+                      border: "none",
+                      borderRadius: 999,
+                      padding: "8px 18px",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor:
+                        exportState === "working" || savingArchive
+                          ? "wait"
+                          : "pointer",
+                      opacity:
+                        exportState === "working" || savingArchive ? 0.7 : 1,
+                      fontFamily: "inherit",
+                      boxShadow: "0 8px 24px rgba(0,106,103,0.25)",
+                    }}
+                  >
+                    {savingArchive ? "جارٍ الحفظ…" : "حفظ في الأرشيف"}
+                  </motion.button>
+                </>
               )}
 
               {/* Error messages */}
-              {(error || exportError) && (
+              {(error || exportError || archiveError) && (
                 <span
                   style={{
                     color: "#fca5a5",
@@ -676,7 +765,7 @@ export default function EmeraldDashboard() {
                     direction: "rtl",
                   }}
                 >
-                  {error || exportError}
+                  {error || exportError || archiveError}
                 </span>
               )}
             </motion.div>
@@ -800,7 +889,7 @@ export default function EmeraldDashboard() {
                     boxShadow: "0 0 28px rgba(212,175,55,0.14), inset 0 0 0 1px rgba(212,175,55,0.15)",
                   }}
                 >
-                  <MudrikLogo size={30} />
+                  <MunakasaLogo size={30} />
                 </div>
               </div>
 
@@ -919,16 +1008,6 @@ export default function EmeraldDashboard() {
             </span>
           )}
         </div>
-
-        {/* ================================================================
-            COMMITTEE SIMULATOR — appears after proposal is fully generated
-            Self-contained: laser scan + glassmorphism results.
-            Placed inside the dark article so it reads on the dark surface.
-            ================================================================ */}
-        <CommitteeSimulator
-          proposalText={proposalText}
-          visible={panelState === "analysis" && !isGeneratingText && !!proposalText}
-        />
       </article>
 
       {/* ================================================================
@@ -1128,9 +1207,7 @@ export default function EmeraldDashboard() {
             </motion.div>
           )}
 
-          {/* ============================================================
-              ANALYSIS STATE — Three Bento cards
-              ============================================================ */}
+          {/* Analysis state: compliance paper score (replaces 3× Bento grid) */}
           {panelState === "analysis" && (
             <motion.div
               key="analysis-panel"
@@ -1147,118 +1224,28 @@ export default function EmeraldDashboard() {
                 transition: { duration: 0.42, ease: EASE_IN_BACK },
               }}
             >
-              {/*
-                Semantic bento: single column on small viewports; md+ two columns
-                with the timeline card spanning the full width of the second row.
-              */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {bentoCards.map((card) => (
-                <motion.div
-                  key={card.id}
-                  role="region"
-                  aria-labelledby={`bento-heading-${card.id}`}
-                  data-bento-slot={card.id}
-                  className={
-                    card.id === "timeline"
-                      ? "bento-luxury-card md:col-span-2"
-                      : "bento-luxury-card"
+              <div className="m-0 w-full min-w-0 p-0" style={{ boxSizing: "border-box" }}>
+                <ComplianceScoreDisplay
+                  value={crawledPercent}
+                  isGenerating={isGeneratingText}
+                  active={
+                    compliancePhase === "streaming" ||
+                    compliancePhase === "done" ||
+                    isAnalyzingMetadata
                   }
-                  initial={{ opacity: 0, y: 30, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 18, scale: 0.98, transition: { duration: 0.35, ease: BENTO_CASCADE_EASING } }}
-                  transition={{
-                    duration: BENTO_CASCADE_DURATION,
-                    ease: BENTO_CASCADE_EASING,
-                    delay: card.staggerEnterDelay,
-                  }}
-                  whileHover={{
-                    background: "color-mix(in srgb, #f7fafa 98%, #ffffff 2%)",
-                    boxShadow: "0 24px 60px rgba(0, 51, 52, 0.08)",
-                    transition: { duration: 0.45, ease: BENTO_CASCADE_EASING },
-                  }}
-                  style={{
-                    background: surface,
-                    borderRadius: 22,
-                    overflow: "hidden",
-                    boxShadow:
-                      "0 4px 50px rgba(0, 51, 52, 0.05), 0 1px 4px rgba(0, 51, 52, 0.02)",
-                  }}
-                >
-                  <motion.div
-                    animate={{
-                      background: card.hasData
-                        ? "rgba(0, 106, 103, 0.07)"
-                        : "transparent",
-                    }}
-                    transition={{ duration: 0.5, ease: BENTO_CASCADE_EASING }}
-                    style={{ padding: "14px 16px 10px", direction: "rtl" }}
-                  >
-                    <p
-                      className="bento-card-eyebrow"
-                      style={{
-                        margin: 0,
-                        color: secondary,
-                        fontWeight: 700,
-                        fontSize: 10,
-                        letterSpacing: "0.1em",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      {card.label}
-                    </p>
-                    <h3
-                      id={`bento-heading-${card.id}`}
-                      style={{
-                        margin: "4px 0 0",
-                        color: secondary,
-                        fontSize: "clamp(0.9rem, 1.5vw, 1.05rem)",
-                        fontWeight: 600,
-                        lineHeight: 1.35,
-                        fontFamily: IBM_PLEX,
-                      }}
-                    >
-                      {card.title}
-                    </h3>
-                    <div
-                      className="bento-card-hairline"
-                      aria-hidden
-                      style={{
-                        height: 1,
-                        marginTop: 8,
-                        borderRadius: 1,
-                        background: "rgba(212, 175, 55, 0.2)",
-                      }}
-                    />
-                  </motion.div>
-
-                  <AnimatePresence mode="wait" initial={false}>
-                    {card.ready ? (
-                      <motion.div
-                        key="data"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.5, ease: BENTO_CASCADE_EASING }}
-                        style={{ color: tertiary }}
-                      >
-                        {card.visualizer}
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="skeleton"
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.3, ease: BENTO_CASCADE_EASING }}
-                      >
-                        <BoxSkeleton baseDelay={card.skeletonBaseDelay} />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              ))}
+                />
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      <CommitteeReviewModal
+        open={committeeOpen}
+        onClose={() => setCommitteeOpen(false)}
+        proposalText={proposalText ?? ""}
+        onProposalTextChange={setProposalText}
+      />
     </section>
   );
 }

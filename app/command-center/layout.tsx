@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "المحرك — مُدْرِك",
+  title: "المحرك — مناقصة",
   description: "محرك توليد العروض الفنية متعددة الوكلاء مع تحليل الامتثال وتقدير الموارد.",
 };
 

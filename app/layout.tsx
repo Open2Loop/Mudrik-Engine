@@ -12,7 +12,6 @@
 
 import type { Metadata } from "next";
 import { IBM_Plex_Sans_Arabic } from "next/font/google";
-import { ProposalsStoreProvider } from "@/lib/proposals-store";
 import "./globals.css";
 
 const ibmPlexSansArabic = IBM_Plex_Sans_Arabic({
@@ -23,9 +22,15 @@ const ibmPlexSansArabic = IBM_Plex_Sans_Arabic({
 });
 
 export const metadata: Metadata = {
-  title: "مُدْرِك | المنصة الذكية لتحليل وإعداد عروض المناقصات والمزايدات",
+  title: "مناقصة | منصة مفتوحة المصدر لتحليل كراسات الشروط وإعداد العروض الفنية",
   description:
-    "أتمتة دورة حياة تحليل كراسات الشروط بدقة عالية، مع مطابقة المتطلبات مع الخبرات السابقة وتوليد مسودات العروض المتوافقة.",
+    "منصة عربية مفتوحة المصدر لأتمتة دورة حياة المناقصة: تحليل كراسات الشروط، فحص الامتثال، توليد العروض الفنية، والتصدير إلى DOCX — بدون تسجيل دخول.",
+  openGraph: {
+    title: "مناقصة — منصة المناقصات مفتوحة المصدر",
+    description:
+      "تحليل كراسات الشروط وإعداد العروض الفنية للمناقصات الحكومية السعودية.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
@@ -38,7 +43,7 @@ export default function RootLayout({
       <body
         className={`${ibmPlexSansArabic.variable} ${ibmPlexSansArabic.className} min-h-screen bg-white font-sans text-charcoal antialiased`}
       >
-        <ProposalsStoreProvider>{children}</ProposalsStoreProvider>
+        {children}
       </body>
     </html>
   );

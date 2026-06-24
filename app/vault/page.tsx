@@ -40,6 +40,44 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(decimals)} ${units[idx]}`;
 }
 
+const GUEST_VAULT_PREVIEW_MSG = "خزنة العروض - وضع المعاينة" as const;
+
+const GUEST_VAULT_DEMO_ROWS: VaultRow[] = [
+  {
+    id: "guest-demo-1",
+    filename: "كراسة_شروط_تجريبية_أ.pdf",
+    status: "ready",
+    created_at: new Date().toISOString(),
+    error_message: null,
+    storage_path: "guest-preview/demo-1.pdf",
+    size_bytes: 1_024_000,
+    mime: "application/pdf",
+    metadata: { preview: true },
+  },
+  {
+    id: "guest-demo-2",
+    filename: "مواصفات_واجهات_تجريبية.docx",
+    status: "ready",
+    created_at: new Date(Date.now() - 86_400_000).toISOString(),
+    error_message: null,
+    storage_path: "guest-preview/demo-2.docx",
+    size_bytes: 512_000,
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    metadata: { preview: true },
+  },
+  {
+    id: "guest-demo-3",
+    filename: "ملحق_هندسي_معاينة.pdf",
+    status: "pending",
+    created_at: new Date(Date.now() - 3_600_000).toISOString(),
+    error_message: null,
+    storage_path: "guest-preview/demo-3.pdf",
+    size_bytes: 2_048_000,
+    mime: "application/pdf",
+    metadata: { preview: true },
+  },
+];
+
 function getDocumentDisplayName(row: VaultRow): string {
   const fromColumn = typeof row.filename === "string" ? row.filename.trim() : "";
   if (fromColumn) return fromColumn;
@@ -69,12 +107,18 @@ export default function VaultPage() {
   const [deletedFlashId, setDeletedFlashId] = useState<string | null>(null);
   const [trashProgress, setTrashProgress] = useState<{ done: number; total: number } | null>(null);
   const reloadTimerRef = useRef<number | null>(null);
+  const [isGuest, setIsGuest] = useState(false);
 
   const load = useCallback(async () => {
     const { data: userData } = await supabase.auth.getUser();
     const currentUid = userData.user?.id ?? null;
     setUid(currentUid);
-    if (!currentUid) return;
+    if (!currentUid) {
+      setIsGuest(true);
+      setRows(GUEST_VAULT_DEMO_ROWS);
+      return;
+    }
+    setIsGuest(false);
     const { data, error } = await supabase
       .from("vault_documents")
       .select("*")
@@ -128,6 +172,14 @@ export default function VaultPage() {
 
   const refreshStats = useCallback(async () => {
     setStatsError(null);
+    if (isGuest) {
+      const total = GUEST_VAULT_DEMO_ROWS.reduce(
+        (sum, r) => sum + (Number.isFinite(r.size_bytes) ? r.size_bytes : 0),
+        0,
+      );
+      setStorageBytes(total);
+      return;
+    }
     if (!uid) {
       setStorageBytes(0);
       return;
@@ -179,7 +231,7 @@ export default function VaultPage() {
     } finally {
       setStatsLoading(false);
     }
-  }, [rows, supabase, uid]);
+  }, [isGuest, rows, supabase, uid]);
 
   useEffect(() => {
     void refreshStats();
@@ -187,6 +239,10 @@ export default function VaultPage() {
 
   const emptyTrash = useCallback(async () => {
     if (trashBusy) return;
+    if (isGuest) {
+      setNotice({ message: GUEST_VAULT_PREVIEW_MSG, type: "info" });
+      return;
+    }
     if (!uid) {
       setNotice({ message: "انتهت الجلسة. أعِد تسجيل الدخول.", type: "error" });
       return;
@@ -232,11 +288,15 @@ export default function VaultPage() {
       setTrashBusy(false);
       setTrashProgress(null);
     }
-  }, [failedRows, load, refreshStats, supabase, trashBusy, uid]);
+  }, [failedRows, isGuest, load, refreshStats, supabase, trashBusy, uid]);
 
   const deleteDocument = useCallback(
     async (row: VaultRow) => {
       if (deleteBusyId) return;
+      if (isGuest) {
+        setNotice({ message: GUEST_VAULT_PREVIEW_MSG, type: "info" });
+        return;
+      }
       const docName = getDocumentDisplayName(row);
       const ok = window.confirm(`سيتم حذف المستند "${docName}" نهائياً. هل تريد المتابعة؟`);
       if (!ok) return;
@@ -267,11 +327,15 @@ export default function VaultPage() {
         setDeleteBusyId(null);
       }
     },
-    [deleteBusyId, refreshStats, rows, supabase]
+    [deleteBusyId, isGuest, refreshStats, rows, supabase]
   );
 
   async function ingestFile(file: File) {
     setNotice(null);
+    if (isGuest) {
+      setNotice({ message: `${GUEST_VAULT_PREVIEW_MSG} — يلزم تسجيل الدخول لرفع الملفات.`, type: "info" });
+      return;
+    }
     const acceptedTypes = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
     if (!acceptedTypes.includes(file.type)) {
       setNotice({ message: "يُقبل ملفات PDF أو DOCX فقط.", type: "error" });
@@ -343,29 +407,47 @@ export default function VaultPage() {
     <AppShell title="خزنة المستندات">
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-8">
+          {isGuest ? (
+            <div className="rounded-2xl border border-secondary/30 bg-secondary/5 px-5 py-4 text-sm text-primary">
+              <p className="font-bold text-midnight">{GUEST_VAULT_PREVIEW_MSG}</p>
+              <p className="mt-1 text-mist">المستندات أدناه للعرض فقط. سجّل الدخول لرفع ومعالجة ملفاتك.</p>
+            </div>
+          ) : null}
           <div className="bg-surface rounded-[2rem] p-8 shadow-[0_4px_50px_rgba(0,51,52,0.05)]">
             <p className="text-base leading-relaxed text-mist mb-8">
               قم برفع كراسات الشروط والمواصفات (PDF) ليتم تحليلها وفهرستها تلقائياً باستخدام الذكاء الاصطناعي.
             </p>
 
             <div
-              className={`relative flex min-h-[280px] cursor-pointer flex-col items-center justify-center rounded-[1.5rem] border-2 border-dashed transition-all duration-300 ${
-                drag
-                  ? "border-secondary bg-secondary/8 scale-[0.99]"
-                  : "border-ghost bg-surface/80 hover:bg-secondary/5 hover:border-secondary/30"
+              className={`relative flex min-h-[280px] flex-col items-center justify-center rounded-[1.5rem] border-2 border-dashed transition-all duration-300 ${
+                isGuest
+                  ? "cursor-not-allowed border-ghost/60 bg-ghost/20 opacity-80"
+                  : `cursor-pointer ${
+                      drag
+                        ? "border-secondary bg-secondary/8 scale-[0.99]"
+                        : "border-ghost bg-surface/80 hover:bg-secondary/5 hover:border-secondary/30"
+                    }`
               }`}
               onDragOver={(e) => {
                 e.preventDefault();
+                if (isGuest) return;
                 setDrag(true);
               }}
               onDragLeave={() => setDrag(false)}
               onDrop={(e) => {
                 e.preventDefault();
+                if (isGuest) return;
                 setDrag(false);
                 const f = e.dataTransfer.files?.[0];
                 if (f) void ingestFile(f);
               }}
-              onClick={() => document.getElementById("vault-input")?.click()}
+              onClick={() => {
+                if (isGuest) {
+                  setNotice({ message: `${GUEST_VAULT_PREVIEW_MSG} — يلزم تسجيل الدخول للرفع.`, type: "info" });
+                  return;
+                }
+                document.getElementById("vault-input")?.click();
+              }}
             >
               <input
                 id="vault-input"

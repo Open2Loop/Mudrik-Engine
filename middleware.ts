@@ -2,8 +2,21 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
+/** API routes usable without a Supabase session (open platform + engine + exports). */
+function isPublicApiPath(path: string): boolean {
+  if (path.startsWith("/api/auth/")) return true;
+  if (path === "/api/ai" || path.startsWith("/api/ai/")) return true;
+  if (path === "/api/clean-generate") return true;
+  if (path.startsWith("/api/engine/")) return true;
+  if (path.startsWith("/api/export/")) return true;
+  if (path.startsWith("/api/company-profile/")) return true;
+  if (path.startsWith("/api/agents/")) return true;
+  if (path.startsWith("/api/proposal/")) return true;
+  return false;
+}
+
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request: { headers: request.headers } });
+  const response = NextResponse.next({ request: { headers: request.headers } });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -29,22 +42,18 @@ export async function middleware(request: NextRequest) {
     user = sessionUser;
   } else {
     console.warn(
-      "[mudrik] Middleware: NEXT_PUBLIC_SUPABASE_URL أو NEXT_PUBLIC_SUPABASE_ANON_KEY غير معرّفين؛ تُعامل الطلبات كغير مصادق عليها."
+      "[munakasa] Middleware: Supabase env vars missing; requests proceed without session.",
     );
   }
 
   const path = request.nextUrl.pathname;
-  if (!user && path.startsWith("/api")) {
+
+  if (!user && path.startsWith("/api") && !isPublicApiPath(path)) {
     return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
   }
 
-  if (!user && path !== "/login" && path !== "/") {
-    const redirect = NextResponse.redirect(new URL("/login", request.url));
-    return redirect;
-  }
-
   if (user && path === "/login") {
-    return NextResponse.redirect(new URL("/vault", request.url));
+    return NextResponse.redirect(new URL("/command-center", request.url));
   }
 
   return response;

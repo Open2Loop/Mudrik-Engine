@@ -16,7 +16,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { AppShell } from "@/components/app-shell";
 import { createClient } from "@/lib/supabase/client";
 import { Key, Cpu, Box, Save, CheckCircle2, AlertCircle, Loader2, Plug, Sparkles } from "lucide-react";
-import { MudrikLogo } from "@/components/mudrik-logo";
+import { MunakasaLogo } from "@/components/munakasa-logo";
+import { BRAND_NAME } from "@/lib/brand";
 
 function isMissingGenerationEngineColumn(message: string): boolean {
   return /generation_engine/i.test(message) && /user_settings/i.test(message);
@@ -37,6 +38,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ message: string; type: "error" | "success" } | null>(null);
+  /** Guest (رمز 2030) — no Supabase user; read-only وضع المعاينة. */
+  const [isGuestDemo, setIsGuestDemo] = useState(false);
 
   /**
    * Loads settings without ever assigning model_api_key / gemini_api_key strings to React state
@@ -47,9 +50,11 @@ export default function SettingsPage() {
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData.user?.id;
     if (!uid) {
+      setIsGuestDemo(true);
       setLoading(false);
       return;
     }
+    setIsGuestDemo(false);
     const { data: rpcRows, error: rpcError } = await supabase.rpc("get_user_settings_for_client");
     if (!rpcError && rpcRows !== null && rpcRows !== undefined) {
       const rows = Array.isArray(rpcRows) ? rpcRows : [rpcRows];
@@ -187,7 +192,7 @@ export default function SettingsPage() {
           <div className="bg-surface rounded-[2rem] p-8 md:p-10 shadow-[0_4px_50px_rgba(0,51,52,0.05)]">
             <div className="flex items-center gap-3 mb-8 pb-6 shadow-[0_1px_0_rgba(0,106,103,0.08)]">
               <div className="bg-secondary/10 p-3 rounded-2xl">
-                <MudrikLogo size={24} className="text-midnight" />
+                <MunakasaLogo size={24} className="text-midnight" />
               </div>
               <div>
                 <h2 className="text-xl font-bold text-midnight">تكوين النماذج</h2>
@@ -195,12 +200,31 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {loading ? (
+            {isGuestDemo && !loading ? (
+              <div className="space-y-6">
+                <div className="rounded-2xl border border-secondary/30 bg-secondary/5 px-5 py-4 text-sm text-primary">
+                  <p className="font-bold text-midnight">وضع المعاينة (Demo Mode)</p>
+                  <p className="mt-1 text-mist">أنت تتصفح بصلاحية زائر. لحفظ مفاتيح API وإعداداتك فعلياً يلزم تسجيل الدخول ببريد.</p>
+                </div>
+                <div className="rounded-2xl border border-ghost bg-white/60 p-6">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-mist">الملف التجريبي</p>
+                  <p className="mt-2 text-lg font-extrabold text-midnight">Guest Expert</p>
+                  <p className="mt-1 text-sm text-mist">الاسم (Demo)</p>
+                  <p className="mt-4 text-base font-bold text-primary">{BRAND_NAME} — وضع المعاينة</p>
+                  <p className="mt-1 text-sm text-mist">الشركة (Demo)</p>
+                </div>
+                <p className="text-sm text-mist leading-relaxed">
+                  إدارة مفاتيح OpenAI وGemini ونماذج التوليد غير متاحة في وضع المعاينة.
+                </p>
+              </div>
+            ) : null}
+
+            {!isGuestDemo && loading ? (
               <div className="flex flex-col items-center justify-center py-20 gap-4">
                 <Loader2 size={32} className="animate-spin text-midnight/20" />
                 <p className="text-sm font-medium text-mist">جارٍ تحميل الإعدادات…</p>
               </div>
-            ) : (
+            ) : !isGuestDemo ? (
               <form onSubmit={onSave} className="space-y-8">
                 <div className="space-y-3">
                   <label
@@ -219,11 +243,11 @@ export default function SettingsPage() {
                     }}
                     className="w-full rounded-2xl border border-ghost bg-surface px-5 py-4 text-sm text-charcoal outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all appearance-none"
                   >
-                    <option value="gemini">السحابة — Gemini Flash</option>
-                    <option value="openai">السحابة — GPT-4o (OpenAI)</option>
+                    <option value="gemini">مزود الذكاء الاصطناعي — Gemini Flash</option>
+                    <option value="openai">مزود الذكاء الاصطناعي — GPT-4o (OpenAI)</option>
                   </select>
                   <p className="text-xs leading-relaxed text-mist px-1">
-                    التوليد يتم مباشرة عبر مزود سحابي (Gemini أو OpenAI) مع مفاتيحك المحفوظة في الإعدادات/البيئة.
+                    التوليد يتم مباشرة عبر مزود الذكاء الاصطناعي (جميناي أو OpenAI) مع مفاتيحك المحفوظة في الإعدادات/البيئة.
                   </p>
                 </div>
 
@@ -241,7 +265,7 @@ export default function SettingsPage() {
                     onChange={(e) => setAiProvider(e.target.value === "openai" ? "openai" : "gemini")}
                     className="w-full rounded-2xl border border-ghost bg-surface px-5 py-4 text-sm text-charcoal outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all appearance-none"
                   >
-                    <option value="gemini">جوجل جيمني (Gemini Embeddings)</option>
+                    <option value="gemini">جميناي</option>
                     <option value="openai">أوبن إيه آي (OpenAI Embeddings)</option>
                   </select>
                 </div>
@@ -281,7 +305,7 @@ export default function SettingsPage() {
                         className="flex items-center gap-2 text-sm font-bold text-charcoal"
                       >
                         <Sparkles size={16} className="text-mist" />
-                        مفتاح Gemini
+                        مفتاح جميناي
                       </label>
                       <input
                         id="geminiKey"
@@ -294,7 +318,7 @@ export default function SettingsPage() {
                         placeholder="AIzaSy•••••••••••••••••••••••"
                       />
                       <p className="text-xs leading-relaxed text-mist px-1">
-                        يُستخدم للتضمين عند اختيار Gemini للخزنة، وللتوليد السحابي عند اختيار Gemini Flash في محرك العروض.
+                        يُستخدم للتضمين عند اختيار جميناي للخزنة، وللتوليد السحابي عند اختيار جميناي Flash في محرك العروض.
                       </p>
                       {hasGeminiKey && !geminiKeyDraft.trim() ? (
                         <p className="text-xs font-medium text-emerald-800 px-1">يوجد مفتاح محفوظ. اكتب مفتاحاً جديداً فقط إذا أردت الاستبدال.</p>
@@ -367,7 +391,7 @@ export default function SettingsPage() {
                   حفظ التغييرات
                 </button>
               </form>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -388,11 +412,11 @@ export default function SettingsPage() {
             <div className="mt-6 space-y-3">
               <div className="flex items-center justify-between text-xs shadow-[0_1px_0_rgba(247,250,250,0.08)] pb-2">
                 <span className="text-white/40">للتضمين:</span>
-                <span className="font-mono text-secondary">text-embedding-3-small</span>
+                <span className="font-mono text-white">text-embedding-3-small</span>
               </div>
               <div className="flex items-center justify-between text-xs shadow-[0_1px_0_rgba(247,250,250,0.08)] pb-2">
                 <span className="text-white/40">للتوليد:</span>
-                <span className="font-mono text-secondary">gpt-4o-mini</span>
+                <span className="font-mono text-white">gpt-4o-mini</span>
               </div>
             </div>
           </div>

@@ -639,7 +639,7 @@ function formatArabicDate(d: Date): string {
 function buildCoverPage(options: BuildDocxOptions): Paragraph[] {
   const title     = options.title?.trim()      || "العرض الفني الرسمي";
   const subtitle  = options.subtitle?.trim()   || "منصة اعتماد — المملكة العربية السعودية";
-  const preparedBy = options.preparedBy?.trim() || "أُعِدّ بواسطة منصة مُدْرِك للذكاء الاصطناعي";
+  const preparedBy = options.preparedBy?.trim() || "أُعِدّ بواسطة منصة مناقصة للذكاء الاصطناعي";
   const date       = formatArabicDate(options.date ?? new Date());
 
   /**
@@ -759,7 +759,7 @@ function buildCoverPage(options: BuildDocxOptions): Paragraph[] {
         makeRun("هذه الوثيقة مُعدَّة آليًا بواسطة منصة ", {
           italics: true, size: 20, color: "006A67",
         }),
-        makeRun("مُدْرِك", { bold: true, size: 20, color: "003334" }),
+        makeRun("مناقصة", { bold: true, size: 20, color: "003334" }),
         makeRun(" للذكاء الاصطناعي — Mudrik AI Platform", {
           italics: true, size: 20, color: "006A67",
         }),
@@ -819,7 +819,7 @@ function buildFooter(): Footer {
             bold: true,
           }),
           new TextRun({
-            text: "   —   Mudrik AI · مُدْرِك",
+            text: "   —   Munakasa · مناقصة",
             font: ARABIC_FONT,
             size: 20,
             rightToLeft: true,

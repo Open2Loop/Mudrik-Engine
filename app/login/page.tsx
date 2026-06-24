@@ -15,18 +15,40 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { MUDRIK_GUEST_SESSION_KEY } from "@/lib/demo-access-constants";
 import { LogIn, ArrowRight, Mail, Lock } from "lucide-react";
-import { MudrikLogo } from "@/components/mudrik-logo";
+import { MunakasaLogo } from "@/components/munakasa-logo";
+import { BRAND_NAME } from "@/lib/brand";
+import { VaultNumericDial } from "@/components/VaultNumericDial";
+
+type AuthMode = "email" | "code";
 
 export default function LoginPage() {
+  const [authMode, setAuthMode] = useState<AuthMode>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("signedout") !== "1") return;
+    try {
+      window.localStorage.removeItem(MUDRIK_GUEST_SESSION_KEY);
+    } catch {
+      /* private mode */
+    }
+    try {
+      window.history.replaceState({}, "", "/login");
+    } catch {
+      /* noop */
+    }
+  }, []);
+
+  useEffect(() => {
     setMessage(null);
-  }, [email, password]);
+  }, [email, password, authMode]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -63,10 +85,10 @@ export default function LoginPage() {
       <header className="bg-surface/85 backdrop-blur-md sticky top-0 z-10 shadow-[0_1px_0_rgba(0,106,103,0.08)]">
         <div className="app-shell-header-inner">
           <Link href="/" className="flex items-center gap-2 text-[clamp(1rem,0.9rem+0.7vw,1.35rem)] font-bold text-primary tracking-tight">
-            <div className="bg-primary text-surface p-1.5 rounded-lg">
-              <MudrikLogo size={20} />
+            <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
+              <MunakasaLogo size={20} />
             </div>
-            <span>مُدْرِك</span>
+            <span>{BRAND_NAME}</span>
           </Link>
           <Link href="/" className="flex items-center gap-1 text-[clamp(0.8rem,0.75rem+0.25vw,0.92rem)] font-medium text-mist hover:text-midnight transition-colors">
             <span>العودة للرئيسية</span>
@@ -77,66 +99,99 @@ export default function LoginPage() {
 
       <main className="app-shell-main grid place-items-center">
         <div className="app-panel w-full max-w-[min(95vw,34rem)] bg-surface p-[clamp(1rem,2.6vw,2.5rem)] shadow-[0_20px_60px_rgba(0,51,52,0.08)]">
-          <div className="space-y-2 mb-10 text-center md:text-start">
+          <div className="space-y-2 mb-8 text-center md:text-start">
             <h1 className="text-[clamp(1.35rem,1.1rem+1.2vw,2.1rem)] font-bold text-primary">أهلاً بك مجدداً</h1>
             <p className="text-[clamp(0.86rem,0.8rem+0.28vw,1rem)] text-mist">قم بتسجيل الدخول للوصول إلى منصة مدرك</p>
           </div>
 
-          <form className="space-y-5" onSubmit={onSubmit}>
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-charcoal flex items-center gap-2">
-                <Mail size={16} className="text-mist" />
-                البريد الإلكتروني
-              </label>
-              <input
-                type="email"
-                required
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-2xl border border-ghost bg-surface px-[clamp(0.75rem,1.3vw,1rem)] py-[clamp(0.65rem,1.3vh,0.9rem)] text-[clamp(0.84rem,0.79rem+0.25vw,0.95rem)] outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <label className="text-sm font-semibold text-charcoal flex items-center gap-2">
-                  <Lock size={16} className="text-mist" />
-                  كلمة المرور
-                </label>
-              </div>
-              <input
-                type="password"
-                required
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-2xl border border-ghost bg-surface px-[clamp(0.75rem,1.3vw,1rem)] py-[clamp(0.65rem,1.3vh,0.9rem)] text-[clamp(0.84rem,0.79rem+0.25vw,0.95rem)] outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all"
-              />
-            </div>
-
-            {message && (
-              <div className="rounded-2xl bg-red-50 px-4 py-3 text-xs text-red-600 flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
-                <div className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
-                {message}
-              </div>
-            )}
-
+          <div
+            className="mb-8 grid grid-cols-2 gap-2 rounded-2xl bg-ghost/40 p-1.5"
+            role="group"
+            aria-label="طريقة الدخول"
+          >
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full group relative overflow-hidden rounded-full bg-primary py-[clamp(0.7rem,1.6vh,1rem)] text-[clamp(0.84rem,0.79rem+0.25vw,0.95rem)] font-bold text-surface shadow-lg shadow-primary/20 transition-all hover:bg-[#042323] hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+              type="button"
+              onClick={() => setAuthMode("email")}
+              className={
+                authMode === "email"
+                  ? "rounded-xl bg-surface py-2.5 text-sm font-bold text-primary shadow-sm ring-1 ring-primary/10 transition"
+                  : "rounded-xl py-2.5 text-sm font-medium text-mist transition hover:text-charcoal"
+              }
             >
-              {loading ? (
-                <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <>
-                  <span>تسجيل الدخول</span>
-                  <LogIn size={18} className="group-hover:translate-x-1 transition-transform" />
-                </>
-              )}
+              بريد وكلمة مرور
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={() => setAuthMode("code")}
+              className={
+                authMode === "code"
+                  ? "rounded-xl bg-surface py-2.5 text-sm font-bold text-primary shadow-sm ring-1 ring-primary/10 transition"
+                  : "rounded-xl py-2.5 text-sm font-medium text-mist transition hover:text-charcoal"
+              }
+            >
+              رمز الوصول
+            </button>
+          </div>
+
+          {authMode === "email" ? (
+            <form className="space-y-5" onSubmit={onSubmit}>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-charcoal flex items-center gap-2">
+                  <Mail size={16} className="text-mist" />
+                  البريد الإلكتروني
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="name@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full rounded-2xl border border-ghost bg-surface px-[clamp(0.75rem,1.3vw,1rem)] py-[clamp(0.65rem,1.3vh,0.9rem)] text-[clamp(0.84rem,0.79rem+0.25vw,0.95rem)] outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-sm font-semibold text-charcoal flex items-center gap-2">
+                    <Lock size={16} className="text-mist" />
+                    كلمة المرور
+                  </label>
+                </div>
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full rounded-2xl border border-ghost bg-surface px-[clamp(0.75rem,1.3vw,1rem)] py-[clamp(0.65rem,1.3vh,0.9rem)] text-[clamp(0.84rem,0.79rem+0.25vw,0.95rem)] outline-none focus:border-secondary/40 focus:ring-4 focus:ring-secondary/10 transition-all"
+                />
+              </div>
+
+              {message && (
+                <div className="rounded-2xl bg-red-50 px-4 py-3 text-xs text-red-600 flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                  <div className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
+                  {message}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full group relative overflow-hidden rounded-full bg-primary py-[clamp(0.7rem,1.6vh,1rem)] text-[clamp(0.84rem,0.79rem+0.25vw,0.95rem)] font-bold text-surface shadow-lg shadow-primary/20 transition-all hover:bg-[#042323] hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2"
+              >
+                {loading ? (
+                  <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <span>تسجيل الدخول</span>
+                    <LogIn size={18} className="group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
+              </button>
+            </form>
+          ) : (
+            <VaultNumericDial embedded />
+          )}
 
           <div className="mt-10 pt-8 text-center shadow-[0_-1px_0_rgba(0,106,103,0.08)]">
             <p className="text-sm text-mist">
@@ -150,7 +205,7 @@ export default function LoginPage() {
 
         <div className="mt-[clamp(0.8rem,1.8vh,1.5rem)] text-center">
           <p className="text-[clamp(0.72rem,0.68rem+0.2vw,0.84rem)] text-mist/60 font-medium">
-            &copy; {new Date().getFullYear()} مدرك للحلول الذكية. جميع الحقوق محفوظة.
+            &copy; {new Date().getFullYear()} نظام مدرك. جميع الحقوق محفوظة.
           </p>
         </div>
       </main>
