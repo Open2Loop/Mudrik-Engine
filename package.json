@@ -1,7 +1,11 @@
 {
-  "name": "mudrik",
+  "name": "munakasa",
   "version": "1.0.0",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Open2Loop/Mudrik-Engine.git"
+  },
   "scripts": {
     "clean": "rm -rf .next",
     "dev": "next dev",
