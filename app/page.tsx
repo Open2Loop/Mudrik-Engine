@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import {
   Archive,
@@ -14,18 +13,6 @@ import {
 import { GitHubStarBanner } from "@/components/github-star-banner";
 import { MunakasaLogo } from "@/components/munakasa-logo";
 import { BRAND_NAME, BRAND_TAGLINE, GITHUB_REPO_URL } from "@/lib/brand";
-
-function SAIPLogo() {
-  return (
-    <Image
-      src="/brands/saip-logo.png"
-      alt="شعار الهيئة السعودية للملكية الفكرية"
-      width={56}
-      height={56}
-      className="h-14 w-14 shrink-0 bg-transparent object-contain select-none"
-    />
-  );
-}
 
 const MODULES = [
   {
@@ -264,12 +251,9 @@ export default function HomePage() {
           dir="ltr"
           className="mx-auto flex w-full max-w-[min(94vw,1280px)] flex-col gap-4 px-[var(--fluid-shell-gutter)] sm:flex-row sm:items-center sm:justify-between sm:gap-6"
         >
-          <div className="flex items-center gap-3">
-            <SAIPLogo />
-            <p dir="rtl" className="max-w-[min(100%,26rem)] text-start leading-snug">
-              نظام تقني مسجل رسمياً لدى الهيئة السعودية للملكية الفكرية
-            </p>
-          </div>
+          <p dir="rtl" className="text-start leading-snug">
+            نظام تقني مسجل رسميا
+          </p>
           <p dir="rtl" className="text-center sm:text-end sm:shrink-0">
             © {new Date().getFullYear()} {BRAND_NAME}. مفتوح المصدر — جميع الحقوق محفوظة للمؤلف.
           </p>
