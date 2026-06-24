@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type {
   GapItem,
@@ -10,7 +11,14 @@ export type {
   ExecutionState,
 } from "@/lib/engine-types";
 
+import { parseStreamChunk } from "@/lib/engine-sse-ui";
 import type { GapItem, BoqItem, WbsItem } from "@/lib/engine-types";
+import {
+  ENGINE_SERVER_GEMINI_KEY_TOAST_AR,
+  isEngineServerApiKeyError,
+} from "@/lib/engine-server-key-error";
+import { createClient } from "@/lib/supabase/client";
+import { ensureAccessCodeForLegacyVip, isAccessCodeEngineUser } from "@/lib/guest-session-client";
 
 export interface StartGenerationInput {
   projectName: string;
@@ -46,17 +54,26 @@ interface UseMudrikEngineResult {
   streamProgress: number;
   /** Granular lifecycle phase for two-stage progress UI. */
   streamPhase: StreamPhase;
-  /** Main proposal stream error only — not set by side-panel API failures. */
+  /**
+   * Main proposal stream: inline red error **only** for HTTP 401 or 500 from the generate endpoint
+   * (`/api/engine/generate` or `/api/clean-generate` after the request runs).
+   */
   error: string | null;
+  /** Transient toast for all other failures (e.g. missing server key, 503, network). */
+  engineToast: string | null;
+  dismissEngineToast: () => void;
   /** Per-panel errors — only the relevant card shows its own error. */
   gapsError: string | null;
   boqError: string | null;
   wbsError: string | null;
   startGeneration: (input: StartGenerationInput) => Promise<void>;
   reset: () => void;
+  setProposalText: Dispatch<SetStateAction<string>>;
 }
 
-async function readResponseError(response: Response): Promise<string> {
+async function readResponseErrorDetail(
+  response: Response,
+): Promise<{ message: string; code?: string }> {
   const contentType = response.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/json")) {
@@ -64,17 +81,20 @@ async function readResponseError(response: Response): Promise<string> {
       error?: string;
       details?: string;
       message?: string;
+      code?: string;
     } | null;
-    return (
-      payload?.error ??
-      payload?.details ??
-      payload?.message ??
-      "حدث خطأ غير متوقع أثناء معالجة الطلب."
-    );
+    return {
+      message:
+        payload?.error ??
+        payload?.details ??
+        payload?.message ??
+        "حدث خطأ غير متوقع أثناء معالجة الطلب.",
+      code: payload?.code,
+    };
   }
 
   const text = await response.text().catch(() => "");
-  return text.trim() || "حدث خطأ غير متوقع أثناء معالجة الطلب.";
+  return { message: text.trim() || "حدث خطأ غير متوقع أثناء معالجة الطلب." };
 }
 
 /** Unwraps `{ success, data }` or legacy `{ gaps|boq|wbs }` from side-panel API JSON. */
@@ -137,7 +157,8 @@ async function postJsonWithRetry<T>(
     }
 
     if (!RETRYABLE_JSON.has(response.status) || attempt >= maxRetries) {
-      throw new Error(await readResponseError(response));
+      const detail = await readResponseErrorDetail(response);
+      throw new Error(detail.message);
     }
 
     attempt++;
@@ -147,70 +168,6 @@ async function postJsonWithRetry<T>(
     );
     await new Promise<void>((r) => setTimeout(r, wait));
   }
-}
-
-/**
- * Parses a single SSE line from the Vercel AI SDK UI message stream.
- *
- * Stream format (AI SDK v5/v6 `toUIMessageStreamResponse`):
- *
- *   data: {"type":"start","messageId":"..."}
- *   data: {"type":"start-step"}
- *   data: {"type":"text-start","id":"text_a"}
- *   data: {"type":"text-delta","id":"text_a","delta":"مرحبا "}
- *   data: {"type":"text-delta","id":"text_a","delta":"بالعالم"}
- *   data: {"type":"text-end","id":"text_a"}
- *   data: {"type":"finish-step"}
- *   data: {"type":"finish"}
- *   data: [DONE]
- *
- * Only `text-delta` events carry visible text. Every other event type
- * (including `text-start` / `text-end` which merely bracket an id) MUST
- * return the empty string — otherwise the raw stream control frames leak
- * into the UI.
- *
- * If a line fails `JSON.parse` it is almost always a buffering race where
- * the boundary fell mid-line; we return "" rather than leaking the raw
- * fragment.
- */
-function extractDeltaFromSseLine(line: string): string {
-  if (!line.startsWith("data:")) return "";
-  const payload = line.slice(5).trim();
-  if (!payload || payload === "[DONE]") return "";
-
-  let event: { type?: unknown; delta?: unknown; textDelta?: unknown };
-  try {
-    event = JSON.parse(payload) as typeof event;
-  } catch {
-    // Partial JSON from a chunk boundary — silently drop. Never leak raw data.
-    return "";
-  }
-
-  if (event.type !== "text-delta") return "";
-
-  const delta = typeof event.delta === "string" ? event.delta : event.textDelta;
-  return typeof delta === "string" ? delta : "";
-}
-
-/**
- * Decodes a batch of SSE lines out of a multi-chunk stream buffer.
- *
- * Always buffers partial trailing lines; never returns a raw chunk verbatim
- * even when the chunk does not yet contain a `data:` prefix — that would
- * leak control bytes across network boundaries.
- */
-function parseStreamChunk(rawChunk: string, bufferRef: { current: string }): string {
-  const combined = bufferRef.current + rawChunk;
-  const lines = combined.split(/\r?\n/);
-  // Preserve the last (possibly partial) line for the next pass.
-  bufferRef.current = lines.pop() ?? "";
-
-  let extracted = "";
-  for (const line of lines) {
-    if (!line) continue;
-    extracted += extractDeltaFromSseLine(line);
-  }
-  return extracted;
 }
 
 /**
@@ -249,6 +206,7 @@ export function useMudrikEngine(): UseMudrikEngineResult {
   const [isAnalyzingMetadata, setIsAnalyzingMetadata] = useState(false);
   const [streamedChars, setStreamedChars] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [engineToast, setEngineToast] = useState<string | null>(null);
   const [gapsError, setGapsError] = useState<string | null>(null);
   const [boqError, setBoqError] = useState<string | null>(null);
   const [wbsError, setWbsError] = useState<string | null>(null);
@@ -256,11 +214,21 @@ export function useMudrikEngine(): UseMudrikEngineResult {
   // A 15-page Arabic proposal is ~18 000–22 000 chars. 20 000 is a good midpoint.
   const TARGET_CHARS = 20_000;
 
+  useEffect(() => {
+    if (!engineToast) return;
+    const id = window.setTimeout(() => setEngineToast(null), 6200);
+    return () => clearTimeout(id);
+  }, [engineToast]);
+
   const requestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   /** Coalesce rapid SSE chunks to one React update per animation frame. */
   const streamRafRef = useRef<number | null>(null);
   const streamPendingRef = useRef("");
+
+  const dismissEngineToast = useCallback(() => {
+    setEngineToast(null);
+  }, []);
 
   const reset = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -273,6 +241,7 @@ export function useMudrikEngine(): UseMudrikEngineResult {
     setIsAnalyzingMetadata(false);
     setStreamedChars(0);
     setError(null);
+    setEngineToast(null);
     setGapsError(null);
     setBoqError(null);
     setWbsError(null);
@@ -287,6 +256,7 @@ export function useMudrikEngine(): UseMudrikEngineResult {
     requestIdRef.current = requestId;
 
     setError(null);
+    setEngineToast(null);
     setGapsError(null);
     setBoqError(null);
     setWbsError(null);
@@ -300,6 +270,15 @@ export function useMudrikEngine(): UseMudrikEngineResult {
     setIsAnalyzingMetadata(false);
 
     try {
+      ensureAccessCodeForLegacyVip();
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const generateUrl = isAccessCodeEngineUser(user)
+        ? "/api/clean-generate"
+        : "/api/engine/generate";
+
       let accumulated = "";
 
       /** Bento chain: Gaps (Compliance) → BOQ (Resources) → WBS (Timeline). */
@@ -321,7 +300,10 @@ export function useMudrikEngine(): UseMudrikEngineResult {
             console.log("🟡 [2/4] Fetching Compliance/Gaps…");
             const gapsPayload = await postJsonWithRetry<Record<string, unknown>>({
               endpoint: "/api/engine/analyze-gaps",
-              body: { proposalText: technicalSource, rfpText: input.rfpText },
+              body: {
+                proposalText: technicalSource,
+                rfpText: input.rfpText,
+              },
               signal,
             });
             if (requestIdRef.current === requestId) {
@@ -404,7 +386,13 @@ export function useMudrikEngine(): UseMudrikEngineResult {
             if (e instanceof Error && (e as Error).name === "AbortError") return;
             if (requestIdRef.current === requestId) {
               setWbsData([]);
-              setWbsError("تعذر تحليل البيانات - حاول مرة أخرى.");
+              if (e instanceof Error && e.message === "INVALID_KEY") {
+                setEngineToast(
+                  "خطأ في مصادقة المفتاح: يرجى التأكد من تفعيل المفتاح في Google Cloud Console.",
+                );
+              } else {
+                setWbsError("تعذر تحليل البيانات - حاول مرة أخرى.");
+              }
             }
             // eslint-disable-next-line no-console
             console.error("🔴 WBS Failed", e);
@@ -417,7 +405,7 @@ export function useMudrikEngine(): UseMudrikEngineResult {
       };
 
       const response = await fetchWithRetry(
-        "/api/engine/generate",
+        generateUrl,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -433,8 +421,40 @@ export function useMudrikEngine(): UseMudrikEngineResult {
         2,
       );
 
-      if (!response.ok || !response.body) {
-        throw new Error(await readResponseError(response));
+      if (!response.ok) {
+        const detail = await readResponseErrorDetail(response);
+        const st = response.status;
+        if (detail.message === "INVALID_KEY" || detail.code === "INVALID_KEY" || detail.code === "API_KEY_INVALID") {
+          setEngineToast(
+            "خطأ في مصادقة المفتاح: يرجى التأكد من تفعيل المفتاح في Google Cloud Console.",
+          );
+          setIsGeneratingText(false);
+          setIsAnalyzingMetadata(false);
+          return;
+        }
+        if (isEngineServerApiKeyError(detail.code, detail.message)) {
+          setEngineToast(ENGINE_SERVER_GEMINI_KEY_TOAST_AR);
+          setIsGeneratingText(false);
+          setIsAnalyzingMetadata(false);
+          return;
+        }
+        if (st === 401 || st === 500) {
+          setError(detail.message);
+          setIsGeneratingText(false);
+          setIsAnalyzingMetadata(false);
+          return;
+        }
+        setEngineToast(detail.message.slice(0, 280) || "تعذر إكمال التوليد. أعد المحاولة لاحقاً.");
+        setIsGeneratingText(false);
+        setIsAnalyzingMetadata(false);
+        return;
+      }
+
+      if (!response.body) {
+        setEngineToast("خادم التوليد لم يعِد بثاً نصياً.");
+        setIsGeneratingText(false);
+        setIsAnalyzingMetadata(false);
+        return;
       }
 
       const reader = response.body.getReader();
@@ -506,7 +526,7 @@ export function useMudrikEngine(): UseMudrikEngineResult {
       const message =
         caughtError instanceof Error ? caughtError.message : "تعذر إكمال التوليد. حاول مرة أخرى.";
       if (requestIdRef.current === requestId) {
-        setError((prev) => (prev ? `${prev} | ${message}` : message));
+        setEngineToast(message.slice(0, 280) || "تعذر إكمال التوليد. حاول مرة أخرى.");
         setIsGeneratingText(false);
         setIsAnalyzingMetadata(false);
       }
@@ -541,10 +561,13 @@ export function useMudrikEngine(): UseMudrikEngineResult {
     streamProgress,
     streamPhase,
     error,
+    engineToast,
+    dismissEngineToast,
     gapsError,
     boqError,
     wbsError,
     startGeneration,
     reset,
+    setProposalText,
   };
 }
