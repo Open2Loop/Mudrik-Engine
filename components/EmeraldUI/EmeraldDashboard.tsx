@@ -33,10 +33,8 @@ import { BRAND_NAME, BRAND_NAME_EN } from "@/lib/brand";
 import { drawFinalComplianceScore, useCrawlingPercent } from "@/hooks/useCrawlingPercent";
 import { useMudrikEngine } from "@/hooks/useMudrikEngine";
 import { useSmoothTypingBuffer } from "@/hooks/useSmoothTypingBuffer";
-import { MUDRIK_GUEST_PREMIUM_FEATURE_TOAST } from "@/lib/demo-access-constants";
-import { isGuestVipGating } from "@/lib/guest-session-client";
-import { computeProposalComplianceDisplayScore } from "@/lib/proposal-compliance-score";
 import { createClient } from "@/lib/supabase/client";
+import { ensureAnonymousSession } from "@/lib/supabase/ensure-anonymous-session";
 import { PROPOSALS_TABLE } from "@/lib/supabase/proposals-table";
 import { PremiumMarkdownViewer } from "./PremiumMarkdownViewer";
 
@@ -259,8 +257,8 @@ export default function EmeraldDashboard() {
   }, [reset]);
 
   useEffect(() => {
-    void supabase.auth.getUser().then(({ data }) => {
-      setSessionUser(data.user ?? null);
+    void ensureAnonymousSession(supabase).then((user) => {
+      setSessionUser(user);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setSessionUser(session?.user ?? null);
@@ -270,9 +268,7 @@ export default function EmeraldDashboard() {
 
   useEffect(() => {
     if (!archiveToast) return;
-    const ms =
-      archiveToast === MUDRIK_GUEST_PREMIUM_FEATURE_TOAST ? 7000 : 4200;
-    const id = window.setTimeout(() => setArchiveToast(null), ms);
+    const id = window.setTimeout(() => setArchiveToast(null), 4200);
     return () => clearTimeout(id);
   }, [archiveToast]);
 
@@ -317,19 +313,16 @@ export default function EmeraldDashboard() {
   const saveProposalToArchive = useCallback(async () => {
     const text = proposalText?.trim() ?? "";
     if (!text || savingArchive) return;
-    if (isGuestVipGating(sessionUser)) {
-      setArchiveToast(MUDRIK_GUEST_PREMIUM_FEATURE_TOAST);
-      return;
-    }
-    if (!sessionUser) {
-      setArchiveToast("سجّل الدخول لحفظ العرض في الأرشيف.");
+    const user = sessionUser ?? (await ensureAnonymousSession(supabase));
+    if (!user) {
+      setArchiveToast("تعذر بدء الجلسة. أعد تحميل الصفحة.");
       return;
     }
     setSavingArchive(true);
     setArchiveError(null);
     try {
       const { error: insertError } = await supabase.from(PROPOSALS_TABLE).insert({
-        user_id: sessionUser.id,
+        user_id: user.id,
         content: text,
         compliance_score: archiveComplianceScore,
         project_name: projectName.trim() || null,
@@ -454,16 +447,9 @@ export default function EmeraldDashboard() {
             direction: "rtl",
             boxShadow: "0 20px 50px rgba(0, 51, 52, 0.25)",
             fontFamily: IBM_PLEX,
-            border:
-              archiveToast === MUDRIK_GUEST_PREMIUM_FEATURE_TOAST
-                ? "1px solid rgba(212, 175, 55, 0.35)"
-                : "1px solid rgba(0, 106, 103, 0.3)",
-            background:
-              archiveToast === MUDRIK_GUEST_PREMIUM_FEATURE_TOAST ? "#0c1f1e" : primary,
-            color:
-              archiveToast === MUDRIK_GUEST_PREMIUM_FEATURE_TOAST
-                ? "rgba(255, 250, 245, 0.95)"
-                : surface,
+            border: "1px solid rgba(0, 106, 103, 0.3)",
+            background: primary,
+            color: surface,
           }}
         >
           {archiveToast}

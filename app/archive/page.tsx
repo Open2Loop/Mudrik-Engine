@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { PremiumMarkdownViewer } from "@/components/EmeraldUI/PremiumMarkdownViewer";
 import { createClient } from "@/lib/supabase/client";
+import { ensureAnonymousSession } from "@/lib/supabase/ensure-anonymous-session";
 import { PROPOSALS_TABLE } from "@/lib/supabase/proposals-table";
 import { Archive, Loader2, Search, X } from "lucide-react";
 
@@ -72,54 +73,22 @@ function scoreLabel(score: number | null): { text: string; className: string } {
 const EMPTY_STATE_AR =
   "لا توجد عروض فنية محفوظة في الأرشيف حالياً." as const;
 
-const GUEST_ARCHIVE_PREVIEW_MSG = "خزنة العروض - وضع المعاينة" as const;
-
-const GUEST_PROPOSAL_DEMO: ProposalRow[] = [
-  {
-    id: "guest-proposal-1",
-    project_name: "مشروع تجريبي — بيانات وهمية (معاينة)",
-    content: "## معاينة\n\nهذا **عرض فني** للوضع التجريبي. سجّل الدخول لحفظ عروضك فعلياً في الأرشيف.",
-    compliance_score: 88,
-    created_at: new Date().toISOString(),
-    metadata: { preview: true },
-  },
-  {
-    id: "guest-proposal-2",
-    project_name: "نموذج كراسة — منافسة وهمية (معاينة)",
-    content: "محتوى توضيحي للمعاينة فقط. لا يُحفَظ على الخادم دون تسجيل دخول.",
-    compliance_score: 72,
-    created_at: new Date(Date.now() - 172_800_000).toISOString(),
-    metadata: { preview: true },
-  },
-  {
-    id: "guest-proposal-3",
-    project_name: "عرض مبدئي — SBC (معاينة)",
-    content: "رؤية 2030، SBC 201/801 — نص **placeholder** لأغراض العرض.",
-    compliance_score: 81,
-    created_at: new Date(Date.now() - 2_592_000_000).toISOString(),
-    metadata: { preview: true },
-  },
-];
-
 export default function ArchivePage() {
   const supabase = useMemo(() => createClient(), []);
   const [rows, setRows] = useState<ProposalRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [detail, setDetail] = useState<ProposalRow | null>(null);
-  const [isGuest, setIsGuest] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const uid = userData.user?.id;
+      const user = await ensureAnonymousSession(supabase);
+      const uid = user?.id;
       if (!uid) {
-        setIsGuest(true);
-        setRows(GUEST_PROPOSAL_DEMO);
+        setRows([]);
         return;
       }
-      setIsGuest(false);
       const { data, error } = await supabase
         .from(PROPOSALS_TABLE)
         .select("id, content, compliance_score, created_at, project_name, metadata")
@@ -178,12 +147,6 @@ export default function ArchivePage() {
   return (
     <AppShell title="الأرشيف">
       <div className="mx-auto w-full max-w-3xl space-y-8 pb-8">
-        {isGuest ? (
-          <div className="rounded-2xl border border-secondary/30 bg-secondary/5 px-5 py-4 text-sm text-primary">
-            <p className="font-bold text-midnight">{GUEST_ARCHIVE_PREVIEW_MSG}</p>
-            <p className="mt-1 text-mist">العروض أدناه للمعاينة فقط. لحفظ عروضك الحقيقية سجّل الدخول.</p>
-          </div>
-        ) : null}
         <p className="text-[clamp(0.88rem,0.82rem+0.25vw,1rem)] leading-relaxed text-mist/90">
           استعرض العروض الفنية التي حفظتها. استخدم البحث للوصول السريع.
         </p>

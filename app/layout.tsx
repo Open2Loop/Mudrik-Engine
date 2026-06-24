@@ -12,6 +12,7 @@
 
 import type { Metadata } from "next";
 import { IBM_Plex_Sans_Arabic } from "next/font/google";
+import { AnonymousSessionProvider } from "@/components/AnonymousSessionProvider";
 import "./globals.css";
 
 const ibmPlexSansArabic = IBM_Plex_Sans_Arabic({
@@ -43,7 +44,7 @@ export default function RootLayout({
       <body
         className={`${ibmPlexSansArabic.variable} ${ibmPlexSansArabic.className} min-h-screen bg-white font-sans text-charcoal antialiased`}
       >
-        {children}
+        <AnonymousSessionProvider>{children}</AnonymousSessionProvider>
       </body>
     </html>
   );

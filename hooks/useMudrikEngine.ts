@@ -18,7 +18,7 @@ import {
   isEngineServerApiKeyError,
 } from "@/lib/engine-server-key-error";
 import { createClient } from "@/lib/supabase/client";
-import { ensureAccessCodeForLegacyVip, isAccessCodeEngineUser } from "@/lib/guest-session-client";
+import { ensureAnonymousSession } from "@/lib/supabase/ensure-anonymous-session";
 
 export interface StartGenerationInput {
   projectName: string;
@@ -270,14 +270,9 @@ export function useMudrikEngine(): UseMudrikEngineResult {
     setIsAnalyzingMetadata(false);
 
     try {
-      ensureAccessCodeForLegacyVip();
       const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      const generateUrl = isAccessCodeEngineUser(user)
-        ? "/api/clean-generate"
-        : "/api/engine/generate";
+      await ensureAnonymousSession(supabase);
+      const generateUrl = "/api/engine/generate";
 
       let accumulated = "";
 
@@ -434,6 +429,12 @@ export function useMudrikEngine(): UseMudrikEngineResult {
         }
         if (isEngineServerApiKeyError(detail.code, detail.message)) {
           setEngineToast(ENGINE_SERVER_GEMINI_KEY_TOAST_AR);
+          setIsGeneratingText(false);
+          setIsAnalyzingMetadata(false);
+          return;
+        }
+        if (st === 400) {
+          setEngineToast(detail.message || ENGINE_SERVER_GEMINI_KEY_TOAST_AR);
           setIsGeneratingText(false);
           setIsAnalyzingMetadata(false);
           return;
