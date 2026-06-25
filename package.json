@@ -4,7 +4,7 @@
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/Open2Loop/Mudrik-Engine.git"
+    "url": "https://github.com/Open2Loop/munaqasa.git"
   },
   "scripts": {
     "clean": "rm -rf .next",

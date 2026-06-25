@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "المحرك — مناقصة",
-  description: "محرك توليد العروض الفنية متعددة الوكلاء مع تحليل الامتثال وتقدير الموارد.",
+  title: "محرك التوليد",
+  description:
+    "تحليل كراسات الشروط، استخراج المتطلبات، وتوليد العروض الفنية مع تقدير WBS وBOQ — محرك مناقصة الذكي.",
+  alternates: { canonical: "/command-center" },
 };
 
-/**
- * Server layout holds route metadata; the page is a Client Component so the
- * server bundle stays minimal — reduces dev HMR “missing chunk” (.js) failures
- * after hot reload when a large client tree is co-located with metadata.
- */
-export default function CommandCenterLayout({ children }: { children: ReactNode }) {
+export default function CommandCenterLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return children;
 }
